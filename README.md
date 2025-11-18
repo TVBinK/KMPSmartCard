@@ -6,10 +6,6 @@ Hệ thống quản lý thẻ xe bus tích hợp **JavaCard Smart Card Simulator
 
 ## 🚀 Cách Chạy Hệ Thống
 
----
-
-### 🔧 Cách 2: Chạy Thủ Công (Đầy đủ với Smart Card)
-
 **Bước 1:** Mở Terminal 1 - Khởi động Simulator
 ```bash
 .\gradlew.bat runSimulator
@@ -31,19 +27,6 @@ Hệ thống quản lý thẻ xe bus tích hợp **JavaCard Smart Card Simulator
 netstat -ano | findstr :9025
 taskkill /F /PID 16348
 ```
-
-
----
-
-### 🎨 Cách 3: Chỉ Chạy UI (Demo Mode - Không cần Smart Card)
-
-```bash
-.\gradlew.bat run
-```
-
-UI sẽ hiển thị đầy đủ các chức năng nhưng không kết nối với smart card.
-
----
 
 ## 📋 Các Chức Năng Chính
 
