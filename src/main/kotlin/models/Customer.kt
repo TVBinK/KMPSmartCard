@@ -47,10 +47,21 @@ data class Customer(
      * Kiểm tra trạng thái thẻ
      */
     fun getCardStatus(): CardStatus {
-        return when {
-            LocalDate.now().isAfter(expiryDate) -> CardStatus.EXPIRED
-            balance <= 0 -> CardStatus.INSUFFICIENT_BALANCE
-            else -> CardStatus.VALID
+        // Kiểm tra hết hạn TRƯỚC (quan trọng nhất)
+        if (LocalDate.now().isAfter(expiryDate)) {
+            return CardStatus.EXPIRED
+        }
+        
+        // Nếu còn hạn → Kiểm tra loại thẻ
+        return when (cardType) {
+            CardType.MONTHLY -> {
+                // Vé tháng: Chỉ cần kiểm tra ngày hết hạn (đã check ở trên)
+                CardStatus.VALID
+            }
+            CardType.SINGLE_TRIP -> {
+                // Vé lượt: Cần kiểm tra số dư
+                if (balance <= 0) CardStatus.INSUFFICIENT_BALANCE else CardStatus.VALID
+            }
         }
     }
 

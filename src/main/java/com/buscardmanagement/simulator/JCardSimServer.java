@@ -27,19 +27,19 @@ public class JCardSimServer {
         System.out.println();
         
         try (ServerSocket serverSocket = new ServerSocket(PORT)) {
-            System.out.println("✓ Server listening on port " + PORT);
+            System.out.println("[OK] Server listening on port " + PORT);
             System.out.println("Waiting for client connection...");
             System.out.println();
             
             while (true) {
                 Socket clientSocket = serverSocket.accept();
-                System.out.println("✓ Client connected: " + clientSocket.getInetAddress());
+                System.out.println("[OK] Client connected: " + clientSocket.getInetAddress());
                 
                 // Handle client in new thread
                 new Thread(() -> handleClient(clientSocket)).start();
             }
         } catch (IOException e) {
-            System.err.println("✗ Server error: " + e.getMessage());
+            System.err.println("[ERROR] Server error: " + e.getMessage());
             e.printStackTrace();
         }
     }
@@ -54,7 +54,7 @@ public class JCardSimServer {
             DataInputStream in = new DataInputStream(socket.getInputStream());
             DataOutputStream out = new DataOutputStream(socket.getOutputStream())
         ) {
-            System.out.println("✓ Card simulator ready");
+            System.out.println("[OK] Card simulator ready");
             System.out.println();
             
             // Process APDU commands
@@ -113,6 +113,15 @@ public class JCardSimServer {
             } else {
                 return new Object[]{new byte[]{(byte)0x6A, (byte)0x88}, isInitialized}; // 6A88 = chưa khởi tạo
             }
+        }
+        
+        // Clear Card (00 18 00 00) - Xóa toàn bộ dữ liệu trên thẻ
+        if (ins == 0x18) {
+            System.out.println("   → CLEAR CARD");
+            cardData.clear(); // Xóa tất cả dữ liệu
+            isInitialized = false; // Đặt lại trạng thái chưa khởi tạo
+            System.out.println("   → Card cleared successfully - All data removed, card reset to uninitialized state");
+            return new Object[]{new byte[]{(byte)0x90, 0x00}, isInitialized}; // 9000 = Success
         }
         
         // Update Customer Info (00 20 00 00) - Dùng để KHỞI TẠO thẻ

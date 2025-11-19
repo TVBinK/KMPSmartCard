@@ -33,6 +33,9 @@ import ui.components.*
 import java.time.LocalDate
 import java.time.LocalDateTime
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 /**
  * Màn hình chính của ứng dụng
@@ -61,10 +64,39 @@ fun MainApp() {
     var showAutoDeductionDialog by remember { mutableStateOf(false) }
     var showRouteTransferDialog by remember { mutableStateOf(false) }
     var showSmartCardDialog by remember { mutableStateOf(false) }
+    var showRealTimeTapDialog by remember { mutableStateOf(false) }
+    var showDeleteConfirmDialog by remember { mutableStateOf(false) }
+    var customerToDelete by remember { mutableStateOf<Customer?>(null) }
+    var showEditCustomerDialog by remember { mutableStateOf(false) }
+    var customerToEdit by remember { mutableStateOf<Customer?>(null) }
     
     // State cho các màn hình
     var selectedCustomer by remember { mutableStateOf<Customer?>(null) }
     var currentTrip by remember { mutableStateOf<Trip?>(null) }
+    
+    // State theo dõi trạng thái kết nối thẻ
+    var isCardConnected by remember { mutableStateOf(false) }
+    var isCardHasData by remember { mutableStateOf(false) }
+    
+    // Function để cập nhật trạng thái thẻ (gọi khi cần)
+    suspend fun refreshCardStatus() {
+        isCardConnected = smartcard.BusCardManager.isConnected
+        
+        if (isCardConnected) {
+            val checkResult = withContext(Dispatchers.IO) {
+                smartcard.BusCardManager.checkCardCreated()
+            }
+            isCardHasData = checkResult.getOrNull() ?: false
+            println("🔄 Card status refreshed - Connected: $isCardConnected, Has Data: $isCardHasData")
+        } else {
+            isCardHasData = false
+        }
+    }
+    
+    // Kiểm tra trạng thái ban đầu
+    LaunchedEffect(Unit) {
+        refreshCardStatus()
+    }
     
     MaterialTheme(
         colors = lightColors(
@@ -242,10 +274,11 @@ fun MainApp() {
                                         onClick = { showLoadCardInfoDialog = true },
                                         modifier = Modifier.weight(1f),
                                         backgroundColor = Color(0xFF9C27B0)
+                                        // Luôn enabled - đây là nơi kết nối Simulator
                                     )
                                     
                                     MenuButton(
-                                        text = "Thanh toán - Tính cước",
+                                        text = "Nạp tiền - Gia hạn",
                                         icon = Icons.Default.ShoppingCart,
                                         onClick = { 
                                             if (selectedCustomer == null) {
@@ -254,7 +287,7 @@ fun MainApp() {
                                             showPaymentDialog = true 
                                         },
                                         modifier = Modifier.weight(1f),
-                                        enabled = selectedCustomer != null
+                                        enabled = isCardConnected && isCardHasData // Phải có dữ liệu
                                     )
                                 }
                                 
@@ -266,10 +299,11 @@ fun MainApp() {
                                 ) {
                                     MenuButton(
                                         text = "Quản lý Smart Card",
-                                        icon = Icons.Default.Email,
+                                        icon = Icons.Default.AccountBox, // Icon thẻ/tài khoản
                                         onClick = { showSmartCardDialog = true },
                                         modifier = Modifier.weight(1f),
-                                        backgroundColor = Color(0xFF9C27B0)
+                                        backgroundColor = Color(0xFF9C27B0),
+                                        enabled = isCardConnected && isCardHasData // Chỉ enabled khi đã nạp thẻ
                                     )
                                     
                                     MenuButton(
@@ -283,24 +317,21 @@ fun MainApp() {
                                             showRouteTransferDialog = true
                                         },
                                         modifier = Modifier.weight(1f),
-                                        enabled = selectedCustomer != null
+                                        enabled = isCardConnected && isCardHasData // Phải có dữ liệu
                                     )
                                 }
                                 
                                 Spacer(modifier = Modifier.height(8.dp))
                                 
                                 MenuButton(
-                                    text = "Demo: Quẹt thẻ - Trừ tiền tự động",
-                                    icon = Icons.Default.PlayArrow,
+                                    text = "Quẹt thẻ tự động - Trừ tiền",
+                                    icon = Icons.Default.Star, // Icon sao/điểm thưởng (giống quẹt thẻ)
                                     onClick = {
-                                        if (selectedCustomer == null) {
-                                            selectedCustomer = customers.firstOrNull()
-                                        }
-                                        showAutoDeductionDialog = true
+                                        showRealTimeTapDialog = true
                                     },
                                     modifier = Modifier.fillMaxWidth(),
                                     backgroundColor = Color(0xFF4CAF50),
-                                    enabled = selectedCustomer != null
+                                    enabled = isCardConnected && isCardHasData
                                 )
                             }
                         }
@@ -472,14 +503,29 @@ fun MainApp() {
                 
                 // Right panel - Ticket validation
                 TicketValidationPanel(
-                    customer = selectedCustomer
+                    customer = selectedCustomer,
+                    onEdit = { customer ->
+                        // Mở dialog edit khách hàng
+                        customerToEdit = customer
+                        showEditCustomerDialog = true
+                    },
+                    onDelete = { customer ->
+                        // Hiển thị dialog xác nhận xóa
+                        customerToDelete = customer
+                        showDeleteConfirmDialog = true
+                    }
                 )
             }
             
             // Dialogs
             if (showLoadCardInfoDialog) {
                 LoadCardInfoDialog(
-                    onDismiss = { showLoadCardInfoDialog = false },
+                    onDismiss = { 
+                        showLoadCardInfoDialog = false
+                        kotlinx.coroutines.GlobalScope.launch {
+                            refreshCardStatus()
+                        }
+                    },
                     onSuccess = { customer ->
                         println("📝 Attempting to save customer: ${customer.cardId} - ${customer.fullName}")
                         println("   Customer Type: ${customer.customerType}")
@@ -504,6 +550,9 @@ fun MainApp() {
                         }
                         
                         showLoadCardInfoDialog = false
+                        kotlinx.coroutines.GlobalScope.launch {
+                            refreshCardStatus()
+                        }
                     }
                 )
             }
@@ -522,43 +571,99 @@ fun MainApp() {
                 PaymentDialog(
                     onDismiss = { showPaymentDialog = false },
                     customers = customers,
-                    onDeduction = { cardId, amount ->
-                        // Trừ tiền và cập nhật database
+                    onTopUp = { cardId, amount ->
+                        // Nạp tiền và cập nhật database (Smart card đã nạp trong PaymentScreen)
                         val customer = customers.find { it.cardId == cardId }
                         if (customer != null) {
-                            val newBalance = customer.balance - amount
+                            val newBalance = customer.balance + amount
                             database.DatabaseManager.updateCustomerBalance(cardId, newBalance)
                             
                             // Insert transaction vào database
                             database.DatabaseManager.insertTransaction(
                                 cardId = cardId,
-                                transactionType = "DEDUCTION",
+                                transactionType = "TOP_UP",
                                 amount = amount,
                                 balanceBefore = customer.balance,
                                 balanceAfter = newBalance,
-                                description = "Trừ tiền"
+                                description = "Nạp tiền vào thẻ: ${String.format("%,.0f", amount)} VNĐ"
                             )
                             
                             // Reload từ database
                             customers = database.DatabaseManager.getAllCustomers()
-                            println("✅ Updated balance and reloaded ${customers.size} customers")
+                            
+                            // Cập nhật selectedCustomer nếu là khách hàng đang chọn
+                            if (selectedCustomer?.cardId == cardId) {
+                                selectedCustomer = customers.find { it.cardId == cardId }
+                            }
+                            
+                            println("✅ Top-up completed and reloaded ${customers.size} customers")
                         }
                     },
                     onExtension = { request ->
-                        // Gia hạn và cập nhật database
+                        // Gia hạn và cập nhật database + smart card
                         val customer = customers.find { it.cardId == request.cardId }
                         if (customer != null) {
                             when (request.extensionType) {
                                 ExtensionType.MONTHLY -> {
-                                    // TODO: Cần thêm hàm updateCustomerExpiryDate vào DatabaseManager
+                                    println("💳 ========== GIA HẠN VÉ THÁNG ==========")
+                                    println("💰 Số tiền thanh toán: ${String.format("%,.0f", request.amount)} VNĐ")
+                                    println("💵 Số dư trước: ${String.format("%,.0f", customer.balance)} VNĐ")
+                                    
+                                    // TRỪ TIỀN trước
+                                    val newBalance = customer.balance - request.amount
+                                    database.DatabaseManager.updateCustomerBalance(request.cardId, newBalance)
+                                    
+                                    // Trừ tiền từ Smart Card (nếu đã kết nối)
+                                    if (smartcard.BusCardManager.isConnected) {
+                                        kotlinx.coroutines.GlobalScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                                            val deductResult = smartcard.BusCardManager.deductBalance(request.amount)
+                                            deductResult.onSuccess {
+                                                println("✅ Đã trừ tiền từ Smart Card: ${String.format("%,.0f", request.amount)} VNĐ")
+                                            }.onFailure { error ->
+                                                println("⚠️ Lỗi trừ tiền từ Smart Card: ${error.message}")
+                                            }
+                                        }
+                                    }
+                                    
+                                    // Gia hạn ngày hết hạn
                                     val newExpiryDate = customer.expiryDate.plusMonths(request.quantity.toLong())
-                                    println("⚠️ Monthly extension needs database update implementation")
-                                    // Tạm thời reload
+                                    val updatedCustomer = customer.copy(
+                                        expiryDate = newExpiryDate,
+                                        balance = newBalance
+                                    )
+                                    database.DatabaseManager.updateCustomer(updatedCustomer)
+                                    
+                                    // Insert transaction
+                                    database.DatabaseManager.insertTransaction(
+                                        cardId = request.cardId,
+                                        transactionType = "EXTEND_MONTHLY",
+                                        amount = request.amount,
+                                        balanceBefore = customer.balance,
+                                        balanceAfter = newBalance,
+                                        description = "Gia hạn vé tháng ${request.quantity} tháng - ${String.format("%,.0f", request.amount)} VNĐ"
+                                    )
+                                    
                                     customers = database.DatabaseManager.getAllCustomers()
+                                    println("💵 Số dư sau: ${String.format("%,.0f", newBalance)} VNĐ")
+                                    println("✅ ========== GIA HẠN THÀNH CÔNG ==========\n")
                                 }
                                 ExtensionType.TRIPS -> {
                                     val newBalance = customer.balance + request.amount
+                                    
+                                    // Cập nhật database
                                     database.DatabaseManager.updateCustomerBalance(request.cardId, newBalance)
+                                    
+                                    // Cập nhật smart card (nếu đã kết nối)
+                                    if (smartcard.BusCardManager.isConnected) {
+                                        kotlinx.coroutines.GlobalScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                                            val topUpResult = smartcard.BusCardManager.topUpBalance(request.amount)
+                                            topUpResult.onSuccess {
+                                                println("✅ Top-up to smart card success: $it VNĐ")
+                                            }.onFailure { error ->
+                                                println("⚠️ Top-up to smart card failed: ${error.message}")
+                                            }
+                                        }
+                                    }
                                     
                                     // Insert transaction
                                     database.DatabaseManager.insertTransaction(
@@ -571,29 +676,20 @@ fun MainApp() {
                                     )
                                     
                                     customers = database.DatabaseManager.getAllCustomers()
+                                    println("✅ Trips extension completed")
                                 }
                             }
-                            println("✅ Extension completed and reloaded ${customers.size} customers")
+                            
+                            // Cập nhật selectedCustomer nếu là khách hàng đang chọn
+                            if (selectedCustomer?.cardId == customer.cardId) {
+                                selectedCustomer = customers.find { it.cardId == customer.cardId }
+                            }
                         }
                     }
                 )
             }
             
-            if (showAutoDeductionDialog && selectedCustomer != null) {
-                AutoDeductionDialog(
-                    customer = selectedCustomer!!,
-                    tapType = TapType.TAP_OFF,
-                    tapInfo = TapOffInfo(
-                        tapOnRoute = "Tuyến 01 - Bến xe A",
-                        tapOffRoute = "Tuyến 01 - Bến xe C",
-                        numberOfStops = 5,
-                        fare = 20000.0,
-                        deductedAmount = 20000.0,
-                        remainingBalance = selectedCustomer!!.balance - 20000.0
-                    ),
-                    onDismiss = { showAutoDeductionDialog = false }
-                )
-            }
+            // AutoDeductionDialog đã được thay thế bằng RealTimeTapDialog
             
             
             if (showRouteTransferDialog && selectedCustomer != null && currentTrip != null) {
@@ -602,7 +698,82 @@ fun MainApp() {
                     currentTrip = currentTrip!!,
                     availableRoutes = getSampleRoutes(),
                     onTransfer = { routeId ->
-                        // Xử lý chuyển tuyến
+                        kotlinx.coroutines.GlobalScope.launch {
+                            try {
+                                println("🔄 ========== CHUYỂN TUYẾN ==========")
+                                println("👤 Khách hàng: ${selectedCustomer?.fullName}")
+                                println("📍 Từ tuyến: ${currentTrip?.tapOn?.routeName}")
+                                println("🎯 Sang tuyến: $routeId")
+                                
+                                val customerCardId = selectedCustomer?.cardId ?: ""
+                                val customerBalance = selectedCustomer?.balance ?: 0.0
+                                
+                                // Kiểm tra thời gian còn lại (30 phút miễn phí)
+                                val remainingTime = currentTrip?.remainingTransferTime() ?: 0
+                                println("⏰ Thời gian còn lại: $remainingTime phút")
+                                
+                                // Logic thẻ xe buýt thật: Quẹt 1 lần → Đi miễn phí 30 phút (chuyển tuyến thoải mái)
+                                if (remainingTime <= 0) {
+                                    println("❌ Hết thời gian hiệu lực! Vui lòng quẹt thẻ lại để tạo chuyến đi mới.")
+                                    return@launch
+                                }
+                                
+                                println("✅ Chuyển tuyến MIỄN PHÍ (trong 30 phút)")
+                                val newBalance = customerBalance // Không trừ tiền
+                                
+                                // Cập nhật thông tin chuyến đi mới (giữ nguyên thời gian gốc)
+                                currentTrip = currentTrip?.copy(
+                                    tapOn = currentTrip!!.tapOn.copy(
+                                        routeId = routeId,
+                                        routeName = routeId
+                                        // Giữ nguyên timestamp gốc để tiếp tục đếm 30 phút từ lần quẹt đầu
+                                    )
+                                )
+                                
+                                // Cập nhật smart card
+                                if (smartcard.BusCardManager.isConnected) {
+                                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                                        val updateResult = smartcard.BusCardManager.updateLastTapInfo(
+                                            routeId = routeId,
+                                            tapType = "TRANSFER",
+                                            timestamp = java.time.LocalDateTime.now().toString()
+                                        )
+                                        updateResult.onSuccess {
+                                            println("✅ Đã cập nhật thông tin chuyển tuyến lên thẻ")
+                                        }.onFailure { error ->
+                                            println("⚠️ Lỗi cập nhật thẻ: ${error.message}")
+                                        }
+                                    }
+                                }
+                                
+                                // Lưu transaction vào database
+                                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                                    database.DatabaseManager.insertTransaction(
+                                        cardId = customerCardId,
+                                        transactionType = "ROUTE_TRANSFER",
+                                        amount = 0.0, // Miễn phí 100%
+                                        balanceBefore = customerBalance,
+                                        balanceAfter = customerBalance, // Không đổi số dư
+                                        description = "Chuyển tuyến miễn phí: $routeId (Còn $remainingTime phút)"
+                                    )
+                                    println("💾 Đã lưu giao dịch chuyển tuyến miễn phí")
+                                }
+                                
+                                // Reload danh sách khách hàng
+                                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                                    customers = database.DatabaseManager.getAllCustomers()
+                                }
+                                
+                                // Cập nhật selection
+                                selectedCustomer = customers.find { it.cardId == customerCardId }
+                                
+                                println("✅ ========== CHUYỂN TUYẾN THÀNH CÔNG ==========\n")
+                                showRouteTransferDialog = false
+                            } catch (e: Exception) {
+                                println("❌ Lỗi chuyển tuyến: ${e.message}")
+                                e.printStackTrace()
+                            }
+                        }
                     },
                     onDismiss = { showRouteTransferDialog = false }
                 )
@@ -612,6 +783,270 @@ fun MainApp() {
                 SmartCardManagementDialog(
                     onDismiss = { showSmartCardDialog = false }
                 )
+            }
+            
+            // Real-time Tap Dialog
+            if (showRealTimeTapDialog) {
+                RealTimeTapDialog(
+                    onDismiss = { showRealTimeTapDialog = false },
+                    onTapDetected = { cardId, tapType ->
+                        kotlinx.coroutines.GlobalScope.launch {
+                            println("🎫 ========== QUẸT THẺ TỰ ĐỘNG ==========")
+                            println("🎫 Card ID phát hiện: $cardId")
+                            println("🎫 Loại quẹt: $tapType")
+                            
+                            // Tìm customer theo cardId
+                            val customer = customers.find { it.cardId == cardId }
+                            
+                            if (customer != null) {
+                                println("✅ Tìm thấy khách hàng: ${customer.fullName}")
+                                println("🎫 Loại thẻ: ${customer.cardType.displayName}")
+                                println("💰 Số dư hiện tại: ${String.format("%,.0f", customer.balance)} VNĐ")
+                                
+                                // Kiểm tra loại thẻ
+                                when (customer.cardType) {
+                                    models.CardType.MONTHLY -> {
+                                        // ✅ VÉ THÁNG: Không trừ tiền, chỉ kiểm tra còn hạn
+                                        println("🎫 Vé tháng - Không trừ tiền")
+                                        
+                                        if (customer.getCardStatus() == models.CardStatus.VALID) {
+                                            // Ghi nhận lượt đi (không trừ tiền)
+                                            database.DatabaseManager.insertTransaction(
+                                                cardId = cardId,
+                                                transactionType = "TAP",
+                                                amount = 0.0,
+                                                balanceBefore = customer.balance,
+                                                balanceAfter = customer.balance,
+                                                description = "Quẹt thẻ tháng - Miễn phí (còn hạn đến ${customer.expiryDate})"
+                                            )
+                                            println("📝 Đã ghi nhận lượt đi (miễn phí)")
+                                            
+                                            // Reload customers
+                                            customers = database.DatabaseManager.getAllCustomers()
+                                            selectedCustomer = customers.find { it.cardId == cardId }
+                                            
+                                            println("✅ ========== QUẸT THẺ THÀNH CÔNG (VÉ THÁNG) ==========")
+                                            println("✅ Khách hàng: ${customer.fullName} ($cardId)")
+                                            println("✅ Không trừ tiền (Vé tháng)")
+                                            println("✅ Còn hạn đến: ${customer.expiryDate}")
+                                            println("==========================================")
+                                        } else {
+                                            println("❌ VÉ THÁNG ĐÃ HẾT HẠN!")
+                                            println("❌ Ngày hết hạn: ${customer.expiryDate}")
+                                            println("==========================================")
+                                        }
+                                    }
+                                    
+                                    models.CardType.SINGLE_TRIP -> {
+                                        // 💰 VÉ LƯỢT: Trừ tiền 7,000đ
+                                        val fare = 7000.0
+                                        println("💵 Vé lượt - Cước phí: ${String.format("%,.0f", fare)} VNĐ/lượt")
+                                        
+                                        // Kiểm tra số dư
+                                        if (customer.balance >= fare) {
+                                            println("🔄 Đang trừ tiền từ Smart Card...")
+                                            
+                                            // Trừ tiền từ smart card
+                                            val deductResult = withContext(Dispatchers.IO) {
+                                                smartcard.BusCardManager.deductBalance(fare)
+                                            }
+                                            
+                                            if (deductResult.isSuccess) {
+                                                val cardNewBalance = deductResult.getOrNull() ?: 0.0
+                                                println("✅ Trừ tiền trên Smart Card thành công! Số dư mới: ${String.format("%,.0f", cardNewBalance)} VNĐ")
+                                                
+                                                // Cập nhật database
+                                                val newBalance = customer.balance - fare
+                                                database.DatabaseManager.updateCustomerBalance(cardId, newBalance)
+                                                println("💾 Đã cập nhật database")
+                                                
+                                                // Insert transaction
+                                                database.DatabaseManager.insertTransaction(
+                                                    cardId = cardId,
+                                                    transactionType = "DEDUCTION",
+                                                    amount = fare,
+                                                    balanceBefore = customer.balance,
+                                                    balanceAfter = newBalance,
+                                                    description = "Quẹt thẻ lượt - Cước xe buýt HN (7,000đ/lượt)"
+                                                )
+                                                println("📝 Đã ghi lại giao dịch")
+                                                
+                                                // Reload customers
+                                                customers = database.DatabaseManager.getAllCustomers()
+                                                selectedCustomer = customers.find { it.cardId == cardId }
+                                                
+                                                println("✅ ========== QUẸT THẺ THÀNH CÔNG (VÉ LƯỢT) ==========")
+                                                println("✅ Khách hàng: ${customer.fullName} ($cardId)")
+                                                println("✅ Đã trừ: ${String.format("%,.0f", fare)} VNĐ")
+                                                println("✅ Số dư còn lại: ${String.format("%,.0f", newBalance)} VNĐ")
+                                                println("==========================================")
+                                            } else {
+                                                println("❌ Lỗi trừ tiền từ Smart Card: ${deductResult.exceptionOrNull()?.message}")
+                                            }
+                                        } else {
+                                            println("⚠️ SỐ DƯ KHÔNG ĐỦ!")
+                                            println("⚠️ Card ID: $cardId")
+                                            println("⚠️ Số dư hiện tại: ${String.format("%,.0f", customer.balance)} VNĐ")
+                                            println("⚠️ Cần: ${String.format("%,.0f", fare)} VNĐ")
+                                            println("==========================================")
+                                        }
+                                    }
+                                }
+                            } else {
+                                println("❌ KHÔNG TÌM THẤY KHÁCH HÀNG!")
+                                println("❌ Card ID: $cardId")
+                                println("❌ Vui lòng kiểm tra lại hoặc nạp thông tin vào thẻ trước")
+                                println("==========================================")
+                            }
+                        }
+                    }
+                )
+            }
+            
+            // Edit Customer Dialog
+            if (showEditCustomerDialog && customerToEdit != null) {
+                EditCustomerDialog(
+                    customer = customerToEdit!!,
+                    onDismiss = { 
+                        showEditCustomerDialog = false
+                        customerToEdit = null
+                    },
+                    onSave = { updatedCustomer ->
+                        // Cập nhật vào database
+                        database.DatabaseManager.updateCustomer(updatedCustomer)
+                        // Reload danh sách
+                        customers = database.DatabaseManager.getAllCustomers()
+                        // Cập nhật selection nếu đang chọn khách hàng này
+                        if (selectedCustomer?.cardId == updatedCustomer.cardId) {
+                            selectedCustomer = customers.find { it.cardId == updatedCustomer.cardId }
+                        }
+                        showEditCustomerDialog = false
+                        customerToEdit = null
+                        println("✅ Updated customer: ${updatedCustomer.cardId}")
+                    }
+                )
+            }
+            
+            // Delete Confirmation Dialog
+            if (showDeleteConfirmDialog && customerToDelete != null) {
+                androidx.compose.ui.window.Dialog(
+                    onDismissRequest = { showDeleteConfirmDialog = false }
+                ) {
+                    Card(
+                        modifier = Modifier
+                            .width(400.dp)
+                            .padding(16.dp),
+                        elevation = 8.dp,
+                        shape = RoundedCornerShape(16.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(24.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Warning,
+                                contentDescription = null,
+                                modifier = Modifier.size(64.dp),
+                                tint = Color(0xFFFF5252)
+                            )
+                            
+                            Spacer(modifier = Modifier.height(16.dp))
+                            
+                            Text(
+                                text = "Xác nhận xóa khách hàng",
+                                fontSize = 20.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF212121)
+                            )
+                            
+                            Spacer(modifier = Modifier.height(16.dp))
+                            
+                            Text(
+                                text = "Bạn có chắc chắn muốn xóa khách hàng này không?",
+                                fontSize = 14.sp,
+                                color = Color(0xFF757575),
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                            )
+                            
+                            Spacer(modifier = Modifier.height(12.dp))
+                            
+                            Card(
+                                backgroundColor = Color(0xFFFFF5F5),
+                                elevation = 0.dp,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(12.dp)
+                                ) {
+                                    Text(
+                                        text = "Tên: ${customerToDelete!!.fullName}",
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                    Text(
+                                        text = "Card ID: ${customerToDelete!!.cardId}",
+                                        fontSize = 12.sp,
+                                        color = Color.Gray
+                                    )
+                                }
+                            }
+                            
+                            Spacer(modifier = Modifier.height(24.dp))
+                            
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                Button(
+                                    onClick = { showDeleteConfirmDialog = false },
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(44.dp),
+                                    colors = ButtonDefaults.buttonColors(
+                                        backgroundColor = Color(0xFF9E9E9E)
+                                    ),
+                                    shape = RoundedCornerShape(8.dp)
+                                ) {
+                                    Text("Hủy", color = Color.White)
+                                }
+                                
+                                Button(
+                                    onClick = {
+                                        customerToDelete?.let { customer ->
+                                            // Xóa khách hàng khỏi database
+                                            database.DatabaseManager.deleteCustomer(customer.cardId)
+                                            // Reload danh sách
+                                            customers = database.DatabaseManager.getAllCustomers()
+                                            // Clear selection nếu đang chọn khách hàng này
+                                            if (selectedCustomer?.cardId == customer.cardId) {
+                                                selectedCustomer = null
+                                            }
+                                            println("✅ Deleted customer: ${customer.cardId}")
+                                        }
+                                        showDeleteConfirmDialog = false
+                                        customerToDelete = null
+                                    },
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(44.dp),
+                                    colors = ButtonDefaults.buttonColors(
+                                        backgroundColor = Color(0xFFFF5252)
+                                    ),
+                                    shape = RoundedCornerShape(8.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Delete,
+                                        contentDescription = null,
+                                        tint = Color.White,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Xóa", color = Color.White)
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
     }
@@ -925,10 +1360,18 @@ private fun getSampleCustomers(): List<Customer> {
 
 private fun getSampleRoutes(): List<BusRoute> {
     return listOf(
-        BusRoute("01", "Tuyến 01 - Bến Thành → Chợ Lớn"),
-        BusRoute("02", "Tuyến 02 - Bến xe Miền Đông → Sài Gòn"),
-        BusRoute("03", "Tuyến 03 - Tân Sơn Nhất → Trung tâm"),
-        BusRoute("04", "Tuyến 04 - Quận 1 → Quận 7")
+        // Các tuyến xe buýt thật ở Hà Nội
+        BusRoute("01", "Tuyến 01 - Yên Nghĩa → Bến xe Gia Lâm"),
+        BusRoute("03", "Tuyến 03 - Bến xe Nước Ngầm → Hoàng Quốc Việt"),
+        BusRoute("07", "Tuyến 07 - Bến xe Yên Nghĩa → Cầu Giấy"),
+        BusRoute("09", "Tuyến 09 - Kim Mã → Bến xe Mỹ Đình"),
+        BusRoute("14", "Tuyến 14 - Bến xe Giáp Bát → Long Biên"),
+        BusRoute("18", "Tuyến 18 - Bến xe Yên Nghĩa → Bến xe Long Biên"),
+        BusRoute("22", "Tuyến 22 - Sân Bay Nội Bài → Kim Mã"),
+        BusRoute("32", "Tuyến 32 - Bến xe Yên Nghĩa → Bệnh viện E"),
+        BusRoute("34", "Tuyến 34 - Đại học Công đoàn → Bưu điện Hà Đông"),
+        BusRoute("40", "Tuyến 40 - Yên Nghĩa → Bến xe Gia Lâm"),
+        BusRoute("86", "Tuyến 86 - Sân Bay Nội Bài → Hoàng Quốc Việt")
     )
 }
 
@@ -953,7 +1396,11 @@ private fun getSampleTrip(): Trip {
  * Right panel - Ticket Validation Info
  */
 @Composable
-private fun TicketValidationPanel(customer: Customer?) {
+private fun TicketValidationPanel(
+    customer: Customer?,
+    onEdit: (Customer) -> Unit = {},
+    onDelete: (Customer) -> Unit = {}
+) {
     Card(
         modifier = Modifier
             .width(400.dp)
@@ -1043,14 +1490,79 @@ private fun TicketValidationPanel(customer: Customer?) {
                 Spacer(modifier = Modifier.height(24.dp))
                 
                 // Status Badge
-                val isValid = customer.isValid()
+                val cardStatus = customer.getCardStatus()
+                val statusText = when (cardStatus) {
+                    models.CardStatus.VALID -> "Hợp lệ"
+                    models.CardStatus.EXPIRED -> "Hết hạn"
+                    models.CardStatus.INSUFFICIENT_BALANCE -> "Không đủ số dư"
+                }
                 StatusBadge(
-                    text = if (isValid) "Hợp lệ" else "Hết hạn",
-                    isValid = isValid,
+                    text = statusText,
+                    isValid = cardStatus == models.CardStatus.VALID,
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(48.dp)
                 )
+                
+                Spacer(modifier = Modifier.height(16.dp))
+                
+                // Action Buttons - Edit và Delete
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    // Edit Button
+                    Button(
+                        onClick = { onEdit(customer) },
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(44.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            backgroundColor = Color(0xFF2196F3)
+                        ),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Edit,
+                            contentDescription = "Sửa",
+                            tint = Color.White,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "Sửa",
+                            color = Color.White,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                    
+                    // Delete Button
+                    Button(
+                        onClick = { onDelete(customer) },
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(44.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            backgroundColor = Color(0xFFFF5252)
+                        ),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Delete,
+                            contentDescription = "Xóa",
+                            tint = Color.White,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "Xóa",
+                            color = Color.White,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                }
             } else {
                 // Empty state
                 Column(
@@ -1118,3 +1630,219 @@ private fun InfoRow(
         )
     }
 }
+
+/**
+ * Edit Customer Dialog
+ */
+@Composable
+private fun EditCustomerDialog(
+    customer: Customer,
+    onDismiss: () -> Unit,
+    onSave: (Customer) -> Unit
+) {
+    var fullName by remember { mutableStateOf(customer.fullName) }
+    var customerType by remember { mutableStateOf(customer.customerType) }
+    var cardType by remember { mutableStateOf(customer.cardType) }
+    var expiryDate by remember { mutableStateOf(customer.expiryDate) }
+    var balance by remember { mutableStateOf(customer.balance.toInt().toString()) }
+
+    androidx.compose.ui.window.Dialog(
+        onDismissRequest = onDismiss
+    ) {
+        Card(
+            modifier = Modifier
+                .width(600.dp)
+                .padding(16.dp),
+            elevation = 8.dp,
+            shape = RoundedCornerShape(16.dp)
+        ) {
+            Column(
+                modifier = Modifier
+                    .padding(24.dp)
+                    .verticalScroll(rememberScrollState())
+            ) {
+                // Header
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Sửa thông tin khách hàng",
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF2196F3)
+                    )
+                    IconButton(onClick = onDismiss) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Đóng"
+                        )
+                    }
+                }
+                
+                Spacer(modifier = Modifier.height(8.dp))
+                
+                Text(
+                    text = "Card ID: ${customer.cardId}",
+                    fontSize = 13.sp,
+                    color = Color.Gray
+                )
+                
+                Spacer(modifier = Modifier.height(24.dp))
+                
+                // Form fields
+                OutlinedTextField(
+                    value = fullName,
+                    onValueChange = { fullName = it },
+                    label = { Text("Họ tên *") },
+                    leadingIcon = { Icon(Icons.Default.Person, contentDescription = null) },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true
+                )
+                
+                Spacer(modifier = Modifier.height(16.dp))
+                
+                // Customer Type Dropdown
+                var customerTypeExpanded by remember { mutableStateOf(false) }
+                Box {
+                    OutlinedTextField(
+                        value = customerType.displayName,
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text("Loại đối tượng") },
+                        trailingIcon = { 
+                            IconButton(onClick = { customerTypeExpanded = !customerTypeExpanded }) {
+                                Icon(
+                                    imageVector = if (customerTypeExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                                    contentDescription = null
+                                )
+                            }
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { customerTypeExpanded = !customerTypeExpanded }
+                    )
+                    DropdownMenu(
+                        expanded = customerTypeExpanded,
+                        onDismissRequest = { customerTypeExpanded = false },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        CustomerType.values().forEach { type ->
+                            DropdownMenuItem(
+                                onClick = {
+                                    customerType = type
+                                    customerTypeExpanded = false
+                                }
+                            ) {
+                                Text(type.displayName)
+                            }
+                        }
+                    }
+                }
+                
+                Spacer(modifier = Modifier.height(16.dp))
+                
+                // Card Type Dropdown
+                var cardTypeExpanded by remember { mutableStateOf(false) }
+                Box {
+                    OutlinedTextField(
+                        value = cardType.displayName,
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text("Loại thẻ") },
+                        trailingIcon = { 
+                            IconButton(onClick = { cardTypeExpanded = !cardTypeExpanded }) {
+                                Icon(
+                                    imageVector = if (cardTypeExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                                    contentDescription = null
+                                )
+                            }
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { cardTypeExpanded = !cardTypeExpanded }
+                    )
+                    DropdownMenu(
+                        expanded = cardTypeExpanded,
+                        onDismissRequest = { cardTypeExpanded = false },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        CardType.values().forEach { type ->
+                            DropdownMenuItem(
+                                onClick = {
+                                    cardType = type
+                                    cardTypeExpanded = false
+                                }
+                            ) {
+                                Text(type.displayName)
+                            }
+                        }
+                    }
+                }
+                
+                Spacer(modifier = Modifier.height(16.dp))
+                
+                OutlinedTextField(
+                    value = balance,
+                    onValueChange = { if (it.all { char -> char.isDigit() }) balance = it },
+                    label = { Text("Số dư (VND) *") },
+                    leadingIcon = { Icon(Icons.Default.ShoppingCart, contentDescription = null) },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true
+                )
+                
+                Spacer(modifier = Modifier.height(24.dp))
+                
+                // Action Buttons
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Button(
+                        onClick = onDismiss,
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(48.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            backgroundColor = Color(0xFF9E9E9E)
+                        ),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Text("Hủy", color = Color.White, fontSize = 15.sp)
+                    }
+                    
+                    Button(
+                        onClick = {
+                            val updatedCustomer = customer.copy(
+                                fullName = fullName,
+                                customerType = customerType,
+                                cardType = cardType,
+                                expiryDate = expiryDate,
+                                balance = balance.toDoubleOrNull() ?: customer.balance
+                            )
+                            onSave(updatedCustomer)
+                        },
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(48.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            backgroundColor = Color(0xFF4CAF50)
+                        ),
+                        shape = RoundedCornerShape(8.dp),
+                        enabled = fullName.isNotBlank() && balance.isNotBlank()
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Check,
+                            contentDescription = null,
+                            tint = Color.White
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Lưu", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+    }
+}
+

@@ -122,8 +122,15 @@ fun LoadCardInfoDialog(
 
     val scope = rememberCoroutineScope()
 
+    // Load danh sách khách hàng khi dialog mở
     LaunchedEffect(Unit) {
         existingCustomers = DatabaseManager.getAllCustomers()
+        
+        // Kiểm tra trạng thái kết nối hiện tại
+        if (BusCardManager.isConnected) {
+            isConnected = true
+            statusMessage = "✓ Đã kết nối với thẻ"
+        }
     }
 
     Dialog(
@@ -158,7 +165,7 @@ fun LoadCardInfoDialog(
                 LinearProgressIndicator(
                     progress = when (currentStep) {
                         LoadStep.CONNECT -> 0.25f
-                        LoadStep.CHECK_CARD -> 0.5f
+                        LoadStep.CHECK_CARD -> 0.50f
                         LoadStep.INPUT_INFO -> 0.75f
                         LoadStep.WRITE_DATA -> 1f
                     },
@@ -224,11 +231,14 @@ fun LoadCardInfoDialog(
                                     result.onSuccess {
                                         isConnected = true
                                         statusMessage = "✓ Đã kết nối với thẻ"
-                                        currentStep = LoadStep.CHECK_CARD
+                                        // Không tự động chuyển, để user nhấn Tiếp tục
                                     }.onFailure { error ->
                                         statusMessage = "✗ ${error.message}"
                                     }
                                 }
+                            },
+                            onNext = {
+                                currentStep = LoadStep.CHECK_CARD
                             }
                         )
 
@@ -259,14 +269,22 @@ fun LoadCardInfoDialog(
                                 scope.launch {
                                     isLoading = true
                                     statusMessage = "Đang xóa dữ liệu thẻ..."
+                                    println("🗑️ Bắt đầu xóa dữ liệu thẻ...")
+                                    
                                     val result = withContext(Dispatchers.IO) { BusCardManager.clearCard() }
-                                    isLoading = false
+                                    
+                                    println("🗑️ Kết quả xóa: ${if (result.isSuccess) "Thành công" else "Thất bại - ${result.exceptionOrNull()?.message}"}")
+                                    
                                     result.onSuccess {
+                                        println("✅ Xóa thẻ thành công, đóng dialog")
                                         statusMessage = "✓ Đã xóa dữ liệu thẻ"
-                                        isCardEmpty = true
-                                        currentStep = LoadStep.INPUT_INFO
+                                        isLoading = false
+                                        delay(500) // Delay ngắn để user thấy thông báo thành công
+                                        onDismiss() // Đóng dialog
                                     }.onFailure { error ->
+                                        isLoading = false
                                         statusMessage = "✗ ${error.message}"
+                                        println("❌ Lỗi xóa thẻ: ${error.message}")
                                     }
                                 }
                             },
@@ -408,11 +426,19 @@ fun LoadCardInfoDialog(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    if (currentStep != LoadStep.CONNECT && !isLoading) {
+                    // Hiển thị nút Quay lại nếu không phải bước đầu tiên và không loading
+                    // Nếu ở CHECK_CARD và đã bỏ qua CONNECT thì không cho quay lại
+                    val showBackButton = !isLoading && when (currentStep) {
+                        LoadStep.CONNECT -> false
+                        LoadStep.CHECK_CARD -> false // Đã bỏ qua CONNECT nên không cho quay lại
+                        LoadStep.INPUT_INFO -> true
+                        LoadStep.WRITE_DATA -> true
+                    }
+                    
+                    if (showBackButton) {
                         Button(
                             onClick = {
                                 currentStep = when (currentStep) {
-                                    LoadStep.CHECK_CARD -> LoadStep.CONNECT
                                     LoadStep.INPUT_INFO -> LoadStep.CHECK_CARD
                                     LoadStep.WRITE_DATA -> LoadStep.INPUT_INFO
                                     else -> currentStep
@@ -443,8 +469,12 @@ fun LoadCardInfoDialog(
 @Composable
 private fun ConnectStepContent(
     isConnected: Boolean,
-    onConnect: () -> Unit
+    onConnect: () -> Unit,
+    onNext: () -> Unit
 ) {
+    var isConnecting by remember { mutableStateOf(false) }
+    var statusMessage by remember { mutableStateOf("Chưa kết nối") }
+    
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -452,44 +482,75 @@ private fun ConnectStepContent(
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         Text(
-            text = "Bước 1: Kết nối với thẻ Smart Card",
+            text = "Bước 1: Kết nối Simulator",
             fontSize = 16.sp,
             fontWeight = FontWeight.Bold,
             color = Color(0xFF2196F3)
         )
 
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            backgroundColor = Color(0xFFE3F2FD)
-        ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Info, contentDescription = null, tint = Color(0xFF2196F3))
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Hướng dẫn", fontWeight = FontWeight.Bold, color = Color(0xFF2196F3))
+                // Status Card - Chỉ hiển thị khi chưa kết nối
+        if (!isConnected) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                backgroundColor = Color(0xFFFFF3E0),
+                elevation = 2.dp
+            ) {
+                Row(
+                    modifier = Modifier.padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Info,
+                        contentDescription = null,
+                        tint = Color(0xFFFF9800),
+                        modifier = Modifier.size(32.dp)
+                    )
+                    
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Simulator Card Reader",
+                            fontSize = 12.sp,
+                            color = Color.Gray
+                        )
+                        Text(
+                            text = statusMessage,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
                 }
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    "• Đảm bảo Card Simulator đang chạy tại localhost:9025\n" +
-                        "• Thẻ phải ở trạng thái rỗng\n" +
-                        "• Kết nối thành công trước khi tiếp tục",
-                    fontSize = 13.sp,
-                    color = Color(0xFF424242)
-                )
             }
         }
 
+        // Connect Button
         if (!isConnected) {
             Button(
-                onClick = onConnect,
+                onClick = {
+                    isConnecting = true
+                    statusMessage = "Đang kết nối..."
+                    onConnect()
+                    // Note: Status will be updated by parent
+                },
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(54.dp),
-                colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF4CAF50))
+                colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF2196F3)),
+                enabled = !isConnecting
             ) {
-                Icon(Icons.Default.Add, contentDescription = null, tint = Color.White)
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("Kết nối với thẻ", color = Color.White)
+                if (isConnecting) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(20.dp),
+                        color = Color.White,
+                        strokeWidth = 2.dp
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Đang kết nối...", color = Color.White, fontSize = 14.sp)
+                } else {
+                    Icon(Icons.Default.Add, contentDescription = null, tint = Color.White)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Kết nối Simulator", color = Color.White, fontSize = 14.sp)
+                }
             }
         } else {
             Card(
@@ -508,13 +569,98 @@ private fun ConnectStepContent(
                         modifier = Modifier.size(32.dp)
                     )
                     Spacer(modifier = Modifier.width(16.dp))
-                    Text(
-                        text = "Đã kết nối thành công!",
-                        color = Color.White,
-                        fontWeight = FontWeight.Bold
-                    )
+                    Column {
+                        Text(
+                            text = "Kết nối thành công!",
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 15.sp
+                        )
+                        Text(
+                            text = "Có thể tiếp tục bước kiểm tra thẻ",
+                            color = Color.White.copy(alpha = 0.9f),
+                            fontSize = 12.sp
+                        )
+                    }
                 }
             }
+            
+            Spacer(modifier = Modifier.height(16.dp))
+            
+            // Nút Tiếp tục
+            Button(
+                onClick = onNext,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(54.dp),
+                colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF4CAF50))
+            ) {
+                Text("Tiếp tục", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.width(8.dp))
+                Icon(Icons.Default.ArrowForward, contentDescription = null, tint = Color.White)
+            }
+        }
+        
+        Divider()
+        
+        // Hướng dẫn
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            backgroundColor = Color(0xFFE3F2FD),
+            elevation = 1.dp
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        Icons.Default.Info,
+                        contentDescription = null,
+                        tint = Color(0xFF2196F3),
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        "Hướng dẫn sử dụng",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF2196F3)
+                    )
+                }
+                
+                Spacer(modifier = Modifier.height(8.dp))
+                
+                Text(
+                    "1. Chạy JCardSimServer (cổng 9025)",
+                    fontSize = 12.sp,
+                    color = Color(0xFF424242)
+                )
+                Text(
+                    "2. Nhấn 'Kết nối Simulator'",
+                    fontSize = 12.sp,
+                    color = Color(0xFF424242)
+                )
+                Text(
+                    "3. Sau khi kết nối thành công, nhấn 'Tiếp tục'",
+                    fontSize = 12.sp,
+                    color = Color(0xFF424242)
+                )
+                
+                Spacer(modifier = Modifier.height(8.dp))
+                
+                Text(
+                    "💡 Lưu ý: Simulator phải đang chạy trước khi kết nối",
+                    fontSize = 11.sp,
+                    color = Color(0xFF666666),
+                    fontStyle = FontStyle.Italic
+                )
+            }
+        }
+    }
+    
+    // Update status message based on connection state
+    LaunchedEffect(isConnected) {
+        if (isConnected) {
+            statusMessage = "✓ Đã kết nối với card reader"
+            isConnecting = false
         }
     }
 }
@@ -527,6 +673,13 @@ private fun CheckCardStepContent(
 ) {
     var hasChecked by remember { mutableStateOf(false) }
     var showHasData by remember { mutableStateOf(false) }
+    
+    // Theo dõi khi isCardEmpty thay đổi (sau khi xóa thành công)
+    LaunchedEffect(isCardEmpty) {
+        if (isCardEmpty) {
+            showHasData = false
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -546,6 +699,7 @@ private fun CheckCardStepContent(
             color = Color.Gray
         )
 
+        // Nút Kiểm tra thẻ
         Button(
             onClick = {
                 hasChecked = true
@@ -562,30 +716,69 @@ private fun CheckCardStepContent(
             Text("Kiểm tra thẻ", color = Color.White)
         }
 
+        // Hiển thị cảnh báo và nút xóa nếu thẻ có dữ liệu
         if (hasChecked && showHasData) {
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                backgroundColor = Color(0xFFFFF3E0)
+                backgroundColor = Color(0xFFFFF3E0),
+                elevation = 2.dp
             ) {
-                Column(modifier = Modifier.padding(16.dp)) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.Warning, contentDescription = null, tint = Color(0xFFFF9800))
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Thẻ đã có dữ liệu", fontWeight = FontWeight.Bold, color = Color(0xFFFF9800))
+                        Icon(Icons.Default.Warning, contentDescription = null, tint = Color(0xFFFF9800), modifier = Modifier.size(24.dp))
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text(
+                            "Thẻ đã có dữ liệu!",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFFE65100)
+                        )
                     }
-                    Spacer(modifier = Modifier.height(12.dp))
+                    
+                    Text(
+                        "Nhấn nút bên dưới để xóa toàn bộ dữ liệu trên thẻ. Sau khi xóa, dialog sẽ tự động đóng.",
+                        fontSize = 13.sp,
+                        color = Color(0xFF666666)
+                    )
+                    
+                    // Nút Xóa dữ liệu thẻ - Chỉ hiển thị khi thẻ có dữ liệu
                     Button(
                         onClick = {
-                            showHasData = false
+                            println("👆 User nhấn nút 'Xóa dữ liệu thẻ'")
                             onClearCard()
                         },
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFFFF9800))
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(54.dp),
+                        colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFFFF5252))
                     ) {
                         Icon(Icons.Default.Delete, contentDescription = null, tint = Color.White)
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("Xóa dữ liệu thẻ", color = Color.White)
+                        Text("Xóa dữ liệu thẻ", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
                     }
+                }
+            }
+        }
+
+        // Hiển thị thông báo nếu thẻ rỗng
+        if (hasChecked && !showHasData) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                backgroundColor = Color(0xFFE8F5E9),
+                elevation = 2.dp
+            ) {
+                Row(
+                    modifier = Modifier.padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Default.Check, contentDescription = null, tint = Color(0xFF4CAF50), modifier = Modifier.size(24.dp))
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Text(
+                        "✓ Thẻ rỗng, sẵn sàng nạp dữ liệu mới!",
+                        fontSize = 13.sp,
+                        color = Color(0xFF2E7D32),
+                        fontWeight = FontWeight.Medium
+                    )
                 }
             }
         }

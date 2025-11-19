@@ -359,7 +359,9 @@ fun <T> CustomDropdown(
             DropdownMenu(
                 expanded = expanded,
                 onDismissRequest = { expanded = false },
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier
+                    .width(500.dp)
+                    .heightIn(max = 300.dp)
             ) {
                 items.forEach { item ->
                     DropdownMenuItem(
@@ -368,7 +370,7 @@ fun <T> CustomDropdown(
                             expanded = false
                         }
                     ) {
-                        Text(text = itemLabel(item))
+                        Text(text = itemLabel(item), fontSize = 14.sp)
                     }
                 }
             }

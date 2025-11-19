@@ -234,13 +234,12 @@ fun RouteTransferDialog(
                     ConfirmButton(
                         text = "Xác nhận chuyển tuyến",
                         onClick = {
-                            if (selectedRoute != null) {
+                            if (selectedRoute != null && remainingTime > 0) {
                                 onTransfer(selectedRoute!!.id)
-                                onDismiss()
                             }
                         },
                         modifier = Modifier.weight(1f),
-                        enabled = selectedRoute != null && remainingTime > 0
+                        enabled = selectedRoute != null && remainingTime > 0 // Chỉ cho phép trong 30 phút
                     )
                 }
                 
@@ -266,7 +265,7 @@ fun RouteTransferDialog(
                             Spacer(modifier = Modifier.width(8.dp))
                             
                             Text(
-                                text = "Hết thời gian chuyển tuyến miễn phí. Bạn cần thanh toán phí mới.",
+                                text = "⚠️ Hết thời gian hiệu lực! Vui lòng quẹt thẻ lại để tạo chuyến đi mới.",
                                 fontSize = 12.sp,
                                 color = Color(0xFFC62828),
                                 fontWeight = FontWeight.Bold

@@ -10,7 +10,8 @@ enum class TransactionType(val displayName: String) {
     DEDUCTION("Trừ tiền"),
     EXTENSION_MONTHLY("Gia hạn tháng"),
     EXTENSION_TRIPS("Nạp lượt"),
-    REFUND("Hoàn tiền")
+    REFUND("Hoàn tiền"),
+    ROUTE_TRANSFER("Chuyển tuyến")
 }
 
 /**

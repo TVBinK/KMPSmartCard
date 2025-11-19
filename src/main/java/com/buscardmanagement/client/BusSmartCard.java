@@ -698,14 +698,24 @@ public class BusSmartCard {
      * @return true nếu xóa thành công
      */
     public boolean clearCard() {
+        System.out.println("🗑️ [Java] clearCard() called - Preparing CLEAR command...");
         byte[] command = {(byte) 0x00, (byte) 0x18, (byte) 0x00, (byte) 0x00, (byte) 0x00};
+        System.out.println("🗑️ [Java] Sending CLEAR command: 00 18 00 00 00");
+        
         ResponseAPDU response = sendCommandAPDU(command);
+        
+        if (response != null) {
+            System.out.println("🗑️ [Java] CLEAR Response SW: " + Integer.toHexString(response.getSW()));
+        } else {
+            System.err.println("🗑️ [Java] CLEAR Response is NULL!");
+        }
         
         if (response != null && response.getSW() == 0x9000) {
             HelpMethod.debugLog("Card cleared successfully");
+            System.out.println("✅ [Java] Card cleared successfully!");
             return true;
         } else {
-            System.err.println("Failed to clear card, SW: " + 
+            System.err.println("❌ [Java] Failed to clear card, SW: " + 
                 (response != null ? Integer.toHexString(response.getSW()) : "null"));
             return false;
         }

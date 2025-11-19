@@ -406,13 +406,45 @@ object BusCardManager {
      */
     fun clearCard(): Result<Boolean> {
         return try {
+            println("🔍 BusCardManager.clearCard() - Kiểm tra kết nối: $isConnected")
+            if (!isConnected) {
+                return Result.failure(Exception("Chưa kết nối với thẻ. Vui lòng kết nối trước khi xóa."))
+            }
+            
+            // Kiểm tra thẻ có dữ liệu trước khi xóa
+            println("🔍 BusCardManager.clearCard() - Kiểm tra thẻ có dữ liệu trước khi xóa...")
+            val hasDataBefore = smartCard.checkCardCreated()
+            println("🔍 Thẻ có dữ liệu trước khi xóa: $hasDataBefore")
+            
+            if (!hasDataBefore) {
+                println("⚠️ Thẻ đã rỗng, không cần xóa")
+                return Result.success(true)
+            }
+            
+            println("🔍 BusCardManager.clearCard() - Gọi smartCard.clearCard()...")
             val result = smartCard.clearCard()
+            println("🔍 BusCardManager.clearCard() - Kết quả từ Java clearCard(): $result")
+            
+            // Kiểm tra lại sau khi xóa
+            Thread.sleep(100) // Delay ngắn để đảm bảo command được xử lý
+            val hasDataAfter = smartCard.checkCardCreated()
+            println("🔍 Thẻ có dữ liệu sau khi xóa: $hasDataAfter")
+            
             if (result) {
-                Result.success(true)
+                if (!hasDataAfter) {
+                    println("✅ Xóa thẻ thành công - Đã xác nhận thẻ rỗng!")
+                    Result.success(true)
+                } else {
+                    println("⚠️ clearCard() trả về true nhưng thẻ vẫn còn dữ liệu!")
+                    Result.failure(Exception("Xóa thẻ không hoàn toàn. Thẻ vẫn có dữ liệu sau khi xóa."))
+                }
             } else {
-                Result.failure(Exception("Không thể xóa dữ liệu thẻ"))
+                println("❌ Java clearCard() trả về false")
+                Result.failure(Exception("Không thể xóa dữ liệu thẻ. Kiểm tra console để xem chi tiết lỗi SW code."))
             }
         } catch (e: Exception) {
+            println("❌ Exception khi xóa thẻ: ${e.message}")
+            e.printStackTrace()
             Result.failure(Exception("Lỗi xóa thẻ: ${e.message}", e))
         }
     }

@@ -50,7 +50,7 @@ fun SmartCardManagementDialog(
     
     // Tab state
     var selectedTab by remember { mutableStateOf(0) }
-    val tabs = listOf("Đọc thẻ", "Thông tin", "Giao dịch")
+    val tabs = listOf("Thông tin", "Giao dịch")
     
     // State cho đọc thẻ thật
     var isConnected by remember { mutableStateOf(false) }
@@ -155,40 +155,9 @@ fun SmartCardManagementDialog(
                 .padding(horizontal = 16.dp, vertical = 8.dp)
         ) {
                 when (selectedTab) {
-                    0 -> ReadSimulatorCardTab(
+                    0 -> InformationTab(
+                        customer = selectedCustomer,
                         isConnected = isConnected,
-                        cardReaderStatus = cardReaderStatus,
-                        isReadingCard = isReadingCard,
-                        onConnect = {
-                            scope.launch {
-                                isReadingCard = true
-                                cardReaderStatus = "Đang kết nối..."
-                                val result = withContext(Dispatchers.IO) {
-                                    smartcard.BusCardManager.connect()
-                                }
-                                isReadingCard = false
-                                result.onSuccess {
-                                    isConnected = true  // Update state
-                                    cardReaderStatus = "✓ Đã kết nối với card reader"
-                                    println("✅ Connected successfully, isConnected = $isConnected")
-                                }.onFailure { error ->
-                                    isConnected = false
-                                    cardReaderStatus = "✗ ${error.message}"
-                                    println("❌ Connection failed: ${error.message}")
-                                }
-                            }
-                        },
-                        onDisconnect = {
-                            scope.launch {
-                                withContext(Dispatchers.IO) {
-                                    smartcard.BusCardManager.disconnect()
-                                }
-                                isConnected = false
-                                cardReaderStatus = "Đã ngắt kết nối"
-                                selectedCustomer = null  // Clear selected customer
-                                println("🔌 Disconnected, isConnected = $isConnected")
-                            }
-                        },
                         onReadCard = {
                             scope.launch {
                                 isReadingCard = true
@@ -202,7 +171,7 @@ fun SmartCardManagementDialog(
                                 
                                 infoResult.onSuccess { info ->
                                     cardIdResult.onSuccess { cardId ->
-                                        // Reload danh sách customers từ database (để có dữ liệu mới nhất)
+                                        // Reload danh sách customers từ database
                                         customers = withContext(Dispatchers.IO) {
                                             database.DatabaseManager.getAllCustomers()
                                         }
@@ -211,24 +180,19 @@ fun SmartCardManagementDialog(
                                         val customer = customers.find { it.cardId == cardId }
                                         if (customer != null) {
                                             selectedCustomer = customer
-                                            cardReaderStatus = "✓ Đọc thẻ thành công: $cardId - ${customer.fullName}"
-                                            selectedTab = 1 // Chuyển sang tab Thông tin
+                                            println("✓ Đọc thẻ thành công: $cardId - ${customer.fullName}")
                                         } else {
-                                            cardReaderStatus = "⚠ Thẻ $cardId chưa có trong database. Hãy nạp thẻ trước!"
+                                            println("⚠ Thẻ $cardId chưa có trong database")
                                         }
                                     }
                                 }.onFailure { error ->
-                                    cardReaderStatus = "✗ ${error.message}"
+                                    println("✗ Lỗi đọc thẻ: ${error.message}")
                                 }
                             }
                         }
                     )
                     
-                    1 -> InformationTab(
-                        customer = selectedCustomer
-                    )
-                    
-                    2 -> TransactionTab(
+                    1 -> TransactionTab(
                         transactions = transactions,
                         selectedCustomer = selectedCustomer
                     )
@@ -253,265 +217,13 @@ fun SmartCardManagementDialog(
 }
 
 /**
- * Tab đọc thẻ từ simulator (JCardSimServer)
- */
-@Composable
-private fun ReadSimulatorCardTab(
-    isConnected: Boolean,
-    cardReaderStatus: String,
-    isReadingCard: Boolean,
-    onConnect: () -> Unit,
-    onDisconnect: () -> Unit,
-    onReadCard: () -> Unit
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .verticalScroll(rememberScrollState())
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        // Status
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            backgroundColor = if (isConnected) Color(0xFFE8F5E9) else Color(0xFFFFF3E0),
-            elevation = 2.dp
-        ) {
-            Row(
-                modifier = Modifier.padding(12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Icon(
-                    imageVector = if (isConnected) Icons.Default.CheckCircle else Icons.Default.Info,
-                    contentDescription = null,
-                    tint = if (isConnected) Color(0xFF4CAF50) else Color(0xFFFF9800),
-                    modifier = Modifier.size(28.dp)
-                )
-                
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = "Simulator Card Reader",
-                        fontSize = 11.sp,
-                        color = Color.Gray
-                    )
-                    Text(
-                        text = cardReaderStatus,
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-            }
-        }
-        
-        // Buttons
-        if (!isConnected) {
-            Button(
-                onClick = onConnect,
-                modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF2196F3)),
-                enabled = !isReadingCard
-            ) {
-                Icon(Icons.Default.Send, contentDescription = null, tint = Color.White)
-                Spacer(Modifier.width(8.dp))
-                Text("Kết nối Simulator", color = Color.White, fontSize = 13.sp)
-            }
-        } else {
-            Button(
-                onClick = onReadCard,
-                modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF4CAF50)),
-                enabled = !isReadingCard
-            ) {
-                if (isReadingCard) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(18.dp),
-                        color = Color.White,
-                        strokeWidth = 2.dp
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    Text("Đang đọc...", color = Color.White, fontSize = 13.sp)
-                } else {
-                    Icon(Icons.Default.Refresh, contentDescription = null, tint = Color.White)
-                    Spacer(Modifier.width(8.dp))
-                    Text("Đọc thông tin từ Simulator", color = Color.White, fontSize = 13.sp)
-                }
-            }
-            
-            Button(
-                onClick = onDisconnect,
-                modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFFF44336)),
-                enabled = !isReadingCard
-            ) {
-                Icon(Icons.Default.Close, contentDescription = null, tint = Color.White)
-                Spacer(Modifier.width(8.dp))
-                Text("Ngắt kết nối", color = Color.White, fontSize = 13.sp)
-            }
-        }
-        
-        Divider()
-        
-        // Hướng dẫn
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            backgroundColor = Color(0xFFE3F2FD),
-            elevation = 1.dp
-        ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        Icons.Default.Info,
-                        contentDescription = null,
-                        tint = Color(0xFF2196F3),
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    Text(
-                        "Hướng dẫn sử dụng",
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFF2196F3)
-                    )
-                }
-                
-                Spacer(Modifier.height(8.dp))
-                
-                Text(
-                    "1. Chạy JCardSimServer (cổng 9025)",
-                    fontSize = 11.sp,
-                    color = Color(0xFF424242)
-                )
-                Text(
-                    "2. Nhấn 'Kết nối Simulator'",
-                    fontSize = 11.sp,
-                    color = Color(0xFF424242)
-                )
-                Text(
-                    "3. Nhấn 'Đọc thông tin từ Simulator'",
-                    fontSize = 11.sp,
-                    color = Color(0xFF424242)
-                )
-                
-                Spacer(Modifier.height(8.dp))
-                
-                Text(
-                    "💡 Lưu ý:",
-                    fontSize = 11.sp,
-                    color = Color(0xFF757575),
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    "• Thẻ phải được nạp vào database trước",
-                    fontSize = 10.sp,
-                    color = Color(0xFF757575)
-                )
-                Text(
-                    "• Dùng 'Nạp thông tin vào thẻ' để thêm mới",
-                    fontSize = 10.sp,
-                    color = Color(0xFF757575)
-                )
-            }
-        }
-    }
-}
-
-/**
- * Tab danh sách thẻ
- */
-@Composable
-private fun CardListTab(
-    customers: List<models.Customer>,
-    selectedCustomer: models.Customer?,
-    onSelectCustomer: (models.Customer) -> Unit
-) {
-    if (customers.isEmpty()) {
-        Box(
-            modifier = Modifier.fillMaxSize(),
-            contentAlignment = Alignment.Center
-        ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Icon(
-                    Icons.Default.Info,
-                    contentDescription = null,
-                    modifier = Modifier.size(48.dp),
-                    tint = Color.Gray
-                )
-                Spacer(Modifier.height(16.dp))
-                Text(
-                    "Chưa có thẻ nào",
-                    fontSize = 14.sp,
-                    color = Color.Gray
-                )
-            }
-        }
-    } else {
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-            contentPadding = PaddingValues(vertical = 8.dp)
-        ) {
-            items(customers) { customer ->
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { onSelectCustomer(customer) },
-                    elevation = if (selectedCustomer?.cardId == customer.cardId) 6.dp else 2.dp,
-                    backgroundColor = if (selectedCustomer?.cardId == customer.cardId) 
-                        Color(0xFFE3F2FD) else Color.White,
-                    shape = RoundedCornerShape(8.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        ImagePlaceholder(
-                            photoPath = customer.photoPath,
-                            photoBytes = customer.photoBytes,
-                            size = Pair(50, 60)
-                        )
-                        
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = customer.fullName,
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Text(
-                                text = "Card ID: ${customer.cardId}",
-                                fontSize = 11.sp,
-                                color = Color.Gray
-                            )
-                            Text(
-                                text = "${String.format("%,.0f", customer.balance)} VNĐ",
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = if (customer.balance > 0) Color(0xFF4CAF50) else Color(0xFFF44336)
-                            )
-                        }
-                        
-                        if (selectedCustomer?.cardId == customer.cardId) {
-                            Icon(
-                                Icons.Default.CheckCircle,
-                                contentDescription = null,
-                                tint = Color(0xFF2196F3),
-                                modifier = Modifier.size(24.dp)
-                            )
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-/**
  * Tab thông tin thẻ
  */
 @Composable
 private fun InformationTab(
-    customer: models.Customer?
+    customer: models.Customer?,
+    isConnected: Boolean,
+    onReadCard: () -> Unit
 ) {
     if (customer == null) {
         Box(
@@ -530,18 +242,41 @@ private fun InformationTab(
                 )
                 Spacer(Modifier.height(16.dp))
                 Text(
-                    "Chưa có thẻ nào được chọn",
+                    "Chưa đọc thẻ nào",
                     fontSize = 16.sp,
                     fontWeight = FontWeight.Bold,
                     color = Color.DarkGray
                 )
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    "Vui lòng vào tab 'Đọc thẻ' để đọc thông tin từ simulator",
+                    "Nhấn nút bên dưới để đọc thông tin từ thẻ đã nạp",
                     fontSize = 13.sp,
                     color = Color.Gray,
                     textAlign = androidx.compose.ui.text.style.TextAlign.Center
                 )
+                
+                Spacer(Modifier.height(24.dp))
+                
+                Button(
+                    onClick = onReadCard,
+                    enabled = isConnected,
+                    colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF4CAF50)),
+                    modifier = Modifier.width(200.dp).height(48.dp)
+                ) {
+                    Icon(Icons.Default.Refresh, contentDescription = null, tint = Color.White)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Đọc thẻ", color = Color.White, fontSize = 14.sp)
+                }
+                
+                if (!isConnected) {
+                    Spacer(Modifier.height(12.dp))
+                    Text(
+                        "⚠️ Vui lòng nạp thông tin vào thẻ trước",
+                        fontSize = 12.sp,
+                        color = Color(0xFFFF9800),
+                        fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
+                    )
+                }
             }
         }
     } else {
@@ -653,7 +388,7 @@ private fun TransactionTab(
                 )
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    "Vui lòng vào tab 'Đọc thẻ' để đọc thông tin từ simulator",
+                    "Vui lòng đọc thẻ trong tab 'Thông tin' để xem giao dịch",
                     fontSize = 13.sp,
                     color = Color.Gray,
                     textAlign = androidx.compose.ui.text.style.TextAlign.Center
@@ -726,11 +461,17 @@ private fun TransactionTab(
                         }
                         
                         val amount = transaction["amount"] as? Double ?: 0.0
+                        val transactionType = transaction["transaction_type"] as? String ?: ""
+                        
+                        // Xác định loại giao dịch (cộng/trừ tiền)
+                        val isDeduction = transactionType in listOf("DEDUCTION", "EXTEND_MONTHLY", "ROUTE_TRANSFER")
+                        val displayAmount = if (isDeduction && amount > 0) -amount else amount
+                        
                         Text(
-                            text = "${if (amount > 0) "+" else ""}${String.format("%,.0f", amount)} VNĐ",
+                            text = "${if (displayAmount > 0) "+" else ""}${String.format("%,.0f", displayAmount)} VNĐ",
                             fontSize = 14.sp,
                             fontWeight = FontWeight.Bold,
-                            color = if (amount > 0) Color(0xFF4CAF50) else Color(0xFFF44336)
+                            color = if (displayAmount > 0) Color(0xFF4CAF50) else Color(0xFFF44336)
                         )
                     }
                 }

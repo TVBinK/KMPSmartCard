@@ -1,9 +1,12 @@
 package ui.screens
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -22,14 +25,14 @@ import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 
 /**
- * Màn hình Thanh toán - Tính cước - Gia hạn
- * Có 2 tab: Tính cước và Gia hạn
+ * Màn hình Nạp tiền - Gia hạn
+ * Có 2 tab: Nạp tiền và Gia hạn
  */
 @Composable
 fun PaymentDialog(
     onDismiss: () -> Unit,
     customers: List<Customer>,
-    onDeduction: (String, Double) -> Unit,
+    onTopUp: (String, Double) -> Unit,
     onExtension: (ExtensionRequest) -> Unit
 ) {
     var selectedTab by remember { mutableStateOf(0) }
@@ -42,7 +45,7 @@ fun PaymentDialog(
         ) {
             // Header
             DialogHeader(
-                title = "Thanh toán - Tính cước - Gia hạn",
+                title = "Nạp tiền - Gia hạn thẻ",
                 onClose = onDismiss
             )
             
@@ -57,7 +60,7 @@ fun PaymentDialog(
                 Tab(
                     selected = selectedTab == 0,
                     onClick = { selectedTab = 0 },
-                    text = { Text("Tính cước", fontWeight = FontWeight.Bold) }
+                    text = { Text("Nạp tiền", fontWeight = FontWeight.Bold) }
                 )
                 Tab(
                     selected = selectedTab == 1,
@@ -70,10 +73,10 @@ fun PaymentDialog(
             
             // Tab Content
             when (selectedTab) {
-                0 -> FareCalculationTab(
+                0 -> TopUpTab(
                     customers = customers,
-                    onDeduction = { cardId, amount ->
-                        onDeduction(cardId, amount)
+                    onTopUp = { cardId, amount ->
+                        onTopUp(cardId, amount)
                         onDismiss()
                     }
                 )
@@ -90,39 +93,23 @@ fun PaymentDialog(
 }
 
 /**
- * Tab Tính cước chuyến đi
+ * Tab Nạp tiền vào thẻ
  */
 @Composable
-fun ColumnScope.FareCalculationTab(
+fun ColumnScope.TopUpTab(
     customers: List<Customer>,
-    onDeduction: (String, Double) -> Unit
+    onTopUp: (String, Double) -> Unit
 ) {
     var cardId by remember { mutableStateOf("") }
     var selectedCustomer by remember { mutableStateOf<Customer?>(null) }
-    var tapOnRoute by remember { mutableStateOf("Tuyến 01 - Bến xe A") }
-    var tapOnTime by remember { mutableStateOf(LocalDateTime.now()) }
-    var tapOffRoute by remember { mutableStateOf("Tuyến 01 - Bến xe C") }
-    var tapOffTime by remember { mutableStateOf(LocalDateTime.now()) }
-    var numberOfStops by remember { mutableStateOf(5) }
-    var fareAmount by remember { mutableStateOf(20000.0) }
+    var topUpAmount by remember { mutableStateOf("") }
     var statusMessage by remember { mutableStateOf("") }
     var isLoading by remember { mutableStateOf(false) }
-    var currentBalance by remember { mutableStateOf(0.0) }
     
     val scope = rememberCoroutineScope()
     
-    // Danh sách tuyến mẫu
-    val routes = remember {
-        listOf(
-            "Tuyến 01 - Bến xe A",
-            "Tuyến 01 - Trạm B1",
-            "Tuyến 01 - Trạm B2",
-            "Tuyến 01 - Bến xe C",
-            "Tuyến 02 - Bến xe D",
-            "Tuyến 02 - Trạm E1",
-            "Tuyến 02 - Bến xe F"
-        )
-    }
+    // Các mệnh giá nạp tiền phổ biến
+    val quickAmounts = listOf(50000, 100000, 200000, 500000)
     
     Column(
         modifier = Modifier
@@ -132,85 +119,87 @@ fun ColumnScope.FareCalculationTab(
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Text(
-            text = "Thông tin chuyến đi",
+            text = "💳 Nạp tiền vào thẻ",
             fontSize = 16.sp,
             fontWeight = FontWeight.Bold,
-            color = Color(0xFF2196F3)
+            color = Color(0xFF4CAF50)
         )
         
-        // Card ID
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
+        // Card ID with Autocomplete
+        var showSuggestions by remember { mutableStateOf(false) }
+        val filteredCustomers = remember(cardId, customers) {
+            if (cardId.isNotEmpty()) {
+                customers.filter { 
+                    it.cardId.contains(cardId, ignoreCase = true) ||
+                    it.fullName.contains(cardId, ignoreCase = true)
+                }
+            } else {
+                customers
+            }
+        }
+        
+        Box {
             CustomTextField(
                 label = "Card ID",
                 value = cardId,
                 onValueChange = { 
                     cardId = it
-                    // Tìm khách hàng theo Card ID
+                    showSuggestions = it.isNotEmpty()
+                    // Tìm khách hàng theo Card ID chính xác
                     selectedCustomer = customers.find { c -> c.cardId == it }
                 },
-                modifier = Modifier.weight(1f),
-                placeholder = "Nhập hoặc quẹt thẻ"
+                modifier = Modifier.fillMaxWidth(),
+                placeholder = "Nhập Card ID hoặc tên khách hàng"
             )
             
-            CustomButton(
-                text = "Đọc thẻ",
-                onClick = {
-                    scope.launch {
-                        isLoading = true
-                        statusMessage = "Đang đọc từ thẻ..."
-                        
-                        // Kết nối
-                        if (!BusCardManager.isConnected) {
-                            val connectResult = withContext(Dispatchers.IO) {
-                                BusCardManager.connect()
+            // Suggestion dropdown
+            if (showSuggestions && filteredCustomers.isNotEmpty() && selectedCustomer == null) {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 65.dp)
+                        .heightIn(max = 200.dp),
+                    elevation = 8.dp,
+                    backgroundColor = Color.White
+                ) {
+                    Column(
+                        modifier = Modifier.verticalScroll(rememberScrollState())
+                    ) {
+                        filteredCustomers.take(5).forEach { customer ->
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        cardId = customer.cardId
+                                        selectedCustomer = customer
+                                        showSuggestions = false
+                                    }
+                                    .padding(12.dp)
+                            ) {
+                                Text(
+                                    text = customer.fullName,
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF212121)
+                                )
+                                Text(
+                                    text = "Card ID: ${customer.cardId}",
+                                    fontSize = 12.sp,
+                                    color = Color.Gray
+                                )
+                                Text(
+                                    text = "Số dư: ${String.format("%,.0f", customer.balance)} VNĐ",
+                                    fontSize = 11.sp,
+                                    color = if (customer.balance > 0) Color(0xFF4CAF50) else Color(0xFFF44336)
+                                )
                             }
-                            if (connectResult.isFailure) {
-                                statusMessage = "Lỗi: ${connectResult.exceptionOrNull()?.message}"
-                                isLoading = false
-                                return@launch
+                            if (customer != filteredCustomers.take(5).last()) {
+                                Divider()
                             }
-                        }
-                        
-                        // Đọc Card ID
-                        val cardIdResult = withContext(Dispatchers.IO) {
-                            BusCardManager.getCardId()
-                        }
-                        
-                        // Đọc số dư
-                        val balanceResult = withContext(Dispatchers.IO) {
-                            BusCardManager.getBalance()
-                        }
-                        
-                        isLoading = false
-                        
-                        cardIdResult.onSuccess { id ->
-                            cardId = id
-                            // Tìm trong danh sách local
-                            selectedCustomer = customers.find { it.cardId == id }
-                        }
-                        
-                        balanceResult.onSuccess { bal ->
-                            currentBalance = bal
-                            statusMessage = "✓ Đã đọc thẻ. Số dư: ${String.format("%,.0f", bal)} VNĐ"
                         }
                     }
-                },
-                modifier = Modifier.width(120.dp),
-                enabled = !isLoading
-            )
-        }
-        
-        // Status message
-        if (statusMessage.isNotEmpty()) {
-            Text(
-                text = statusMessage,
-                fontSize = 12.sp,
-                color = if (statusMessage.startsWith("✓")) Color(0xFF4CAF50) else Color(0xFFF44336),
-                modifier = Modifier.padding(vertical = 4.dp)
-            )
+                }
+            }
         }
         
         // Thông tin khách hàng (nếu tìm thấy)
@@ -247,82 +236,98 @@ fun ColumnScope.FareCalculationTab(
         
         CustomDivider()
         
-        // Thông tin quẹt lên
+        // Nhập số tiền nạp
         Text(
-            text = "Thông tin quẹt lên",
+            text = "Số tiền nạp",
             fontSize = 14.sp,
             fontWeight = FontWeight.Bold
         )
         
-        CustomDropdown(
-            label = "Tuyến/Vị trí quẹt lên",
-            items = routes,
-            selectedItem = tapOnRoute,
-            onItemSelected = { tapOnRoute = it }
+        CustomTextField(
+            label = "Nhập số tiền (VNĐ)",
+            value = topUpAmount,
+            onValueChange = { 
+                // Chỉ cho phép nhập số
+                if (it.isEmpty() || it.all { char -> char.isDigit() }) {
+                    topUpAmount = it
+                }
+            },
+            modifier = Modifier.fillMaxWidth(),
+            placeholder = "Ví dụ: 100000"
         )
         
-        InfoLabel(
-            label = "Thời gian quẹt lên",
-            value = tapOnTime.format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm:ss"))
-        )
-        
-        CustomDivider()
-        
-        // Thông tin quẹt xuống
+        // Các nút nạp nhanh
         Text(
-            text = "Thông tin quẹt xuống",
-            fontSize = 14.sp,
-            fontWeight = FontWeight.Bold
+            text = "Hoặc chọn mệnh giá:",
+            fontSize = 12.sp,
+            color = Color.Gray
         )
         
-        CustomDropdown(
-            label = "Tuyến/Vị trí quẹt xuống",
-            items = routes,
-            selectedItem = tapOffRoute,
-            onItemSelected = { 
-                tapOffRoute = it
-                // Tính toán số chặng và cước phí
-                numberOfStops = calculateStops(tapOnRoute, tapOffRoute)
-                fareAmount = calculateFare(numberOfStops)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            quickAmounts.forEach { amount ->
+                Button(
+                    onClick = { topUpAmount = amount.toString() },
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.buttonColors(
+                        backgroundColor = Color(0xFFE3F2FD)
+                    )
+                ) {
+                    Text(
+                        text = "${amount / 1000}K",
+                        fontSize = 12.sp,
+                        color = Color(0xFF2196F3),
+                        fontWeight = FontWeight.Bold
+                    )
+                }
             }
-        )
-        
-        InfoLabel(
-            label = "Thời gian quẹt xuống",
-            value = tapOffTime.format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm:ss"))
-        )
+        }
         
         // Kết quả tính toán
-        CustomCard(backgroundColor = Color(0xFFFFF3E0)) {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    InfoLabel(
-                        label = "Số chặng",
-                        value = "$numberOfStops chặng",
-                        valueFontWeight = FontWeight.Bold,
-                        modifier = Modifier.weight(1f)
-                    )
-                    
-                    InfoLabel(
-                        label = "Số tiền phải trừ",
-                        value = "${String.format("%,.0f", fareAmount)} VNĐ",
-                        valueColor = Color(0xFFF44336),
-                        valueFontWeight = FontWeight.Bold,
-                        modifier = Modifier.weight(1f)
-                    )
+        if (selectedCustomer != null && topUpAmount.isNotEmpty()) {
+            val amount = topUpAmount.toDoubleOrNull() ?: 0.0
+            if (amount > 0) {
+                CustomCard(backgroundColor = Color(0xFFE8F5E9)) {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        InfoLabel(
+                            label = "Số dư hiện tại",
+                            value = "${String.format("%,.0f", selectedCustomer!!.balance)} VNĐ",
+                            valueFontWeight = FontWeight.Bold
+                        )
+                        
+                        InfoLabel(
+                            label = "Số tiền nạp",
+                            value = "+ ${String.format("%,.0f", amount)} VNĐ",
+                            valueColor = Color(0xFF4CAF50),
+                            valueFontWeight = FontWeight.Bold
+                        )
+                        
+                        Divider(color = Color(0xFFBDBDBD), thickness = 1.dp)
+                        
+                        InfoLabel(
+                            label = "Số dư sau khi nạp",
+                            value = "${String.format("%,.0f", selectedCustomer!!.balance + amount)} VNĐ",
+                            valueColor = Color(0xFF2E7D32),
+                            valueFontWeight = FontWeight.Bold
+                        )
+                    }
                 }
-                
-                if (selectedCustomer != null) {
-                    InfoLabel(
-                        label = "Số dư sau khi trừ",
-                        value = "${String.format("%,.0f", selectedCustomer!!.balance - fareAmount)} VNĐ",
-                        valueColor = if (selectedCustomer!!.balance - fareAmount >= 0) Color(0xFF4CAF50) else Color(0xFFF44336),
-                        valueFontWeight = FontWeight.Bold
-                    )
-                }
+            }
+        }
+        
+        // Thông báo trạng thái
+        if (statusMessage.isNotEmpty()) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                backgroundColor = if (statusMessage.contains("✓")) Color(0xFFE8F5E9) else Color(0xFFFFEBEE)
+            ) {
+                Text(
+                    text = statusMessage,
+                    modifier = Modifier.padding(12.dp),
+                    color = if (statusMessage.contains("✓")) Color(0xFF4CAF50) else Color(0xFFF44336)
+                )
             }
         }
     }
@@ -341,11 +346,17 @@ fun ColumnScope.FareCalculationTab(
         )
         
         ConfirmButton(
-            text = "Xác nhận trừ tiền từ thẻ",
+            text = "💰 Xác nhận nạp tiền",
             onClick = {
+                val amount = topUpAmount.toDoubleOrNull()
+                if (amount == null || amount <= 0) {
+                    statusMessage = "❌ Vui lòng nhập số tiền hợp lệ!"
+                    return@ConfirmButton
+                }
+                
                 scope.launch {
                     isLoading = true
-                    statusMessage = "Đang trừ tiền từ thẻ..."
+                    statusMessage = "Đang nạp tiền vào thẻ..."
                     
                     // Kết nối
                     if (!BusCardManager.isConnected) {
@@ -353,38 +364,38 @@ fun ColumnScope.FareCalculationTab(
                             BusCardManager.connect()
                         }
                         if (connectResult.isFailure) {
-                            statusMessage = "Lỗi kết nối: ${connectResult.exceptionOrNull()?.message}"
+                            statusMessage = "❌ Lỗi kết nối: ${connectResult.exceptionOrNull()?.message}"
                             isLoading = false
                             return@launch
                         }
                     }
                     
-                    // Trừ tiền
-                    val deductResult = withContext(Dispatchers.IO) {
-                        BusCardManager.deductBalance(fareAmount)
+                    // Nạp tiền (top-up)
+                    val topUpResult = withContext(Dispatchers.IO) {
+                        BusCardManager.topUpBalance(amount)
                     }
                     
                     isLoading = false
                     
-                    deductResult.onSuccess { newBalance ->
-                        currentBalance = newBalance
-                        statusMessage = "✓ Đã trừ ${String.format("%,.0f", fareAmount)} VNĐ. Số dư mới: ${String.format("%,.0f", newBalance)} VNĐ"
+                    topUpResult.onSuccess { newBalance ->
+                        statusMessage = "✓ Đã nạp ${String.format("%,.0f", amount)} VNĐ. Số dư mới: ${String.format("%,.0f", newBalance)} VNĐ"
                         
                         // Update local customer
                         if (selectedCustomer != null) {
-                            onDeduction(cardId, fareAmount)
+                            onTopUp(cardId, amount)
                         }
                         
                         // Đợi 2 giây rồi reset
                         kotlinx.coroutines.delay(2000)
+                        topUpAmount = ""
                         statusMessage = ""
                     }.onFailure { error ->
-                        statusMessage = "Lỗi trừ tiền: ${error.message}"
+                        statusMessage = "❌ Lỗi nạp tiền: ${error.message}"
                     }
                 }
             },
             modifier = Modifier.weight(1f),
-            enabled = !isLoading && cardId.isNotEmpty() && currentBalance >= fareAmount
+            enabled = !isLoading && selectedCustomer != null && topUpAmount.isNotEmpty()
         )
     }
 }
@@ -407,7 +418,7 @@ fun ColumnScope.ExtensionTab(
     LaunchedEffect(extensionType, quantity) {
         val qty = quantity.toIntOrNull() ?: 0
         amount = when (extensionType) {
-            ExtensionType.MONTHLY -> qty * 200000.0  // 200k/tháng
+            ExtensionType.MONTHLY -> qty * 100000.0  // 100k/tháng (vé tháng Hà Nội)
             ExtensionType.TRIPS -> qty * 7000.0      // 7k/lượt
         }
     }
@@ -426,29 +437,91 @@ fun ColumnScope.ExtensionTab(
             color = Color(0xFF2196F3)
         )
         
-        // Card ID
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
+        // Card ID with Autocomplete
+        var showSuggestions by remember { mutableStateOf(false) }
+        val filteredCustomers = remember(cardId, customers) {
+            if (cardId.isNotEmpty()) {
+                customers.filter { 
+                    it.cardId.contains(cardId, ignoreCase = true) ||
+                    it.fullName.contains(cardId, ignoreCase = true)
+                }
+            } else {
+                customers
+            }
+        }
+        
+        Box {
             CustomTextField(
                 label = "Card ID",
                 value = cardId,
                 onValueChange = { 
                     cardId = it
+                    showSuggestions = it.isNotEmpty()
+                    // Tìm khách hàng theo Card ID chính xác
                     selectedCustomer = customers.find { c -> c.cardId == it }
                 },
-                modifier = Modifier.weight(1f),
-                placeholder = "Nhập hoặc quẹt thẻ"
+                modifier = Modifier.fillMaxWidth(),
+                placeholder = "Nhập Card ID hoặc tên khách hàng"
             )
             
-            CustomButton(
-                text = "Tìm",
-                onClick = {
-                    selectedCustomer = customers.find { it.cardId == cardId }
-                },
-                modifier = Modifier.width(100.dp)
-            )
+            // Suggestion dropdown
+            if (showSuggestions && filteredCustomers.isNotEmpty() && selectedCustomer == null) {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 65.dp)
+                        .heightIn(max = 200.dp),
+                    elevation = 8.dp,
+                    backgroundColor = Color.White
+                ) {
+                    Column(
+                        modifier = Modifier.verticalScroll(rememberScrollState())
+                    ) {
+                        filteredCustomers.take(5).forEach { customer ->
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        cardId = customer.cardId
+                                        selectedCustomer = customer
+                                        showSuggestions = false
+                                    }
+                                    .padding(12.dp)
+                            ) {
+                                Text(
+                                    text = customer.fullName,
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF212121)
+                                )
+                                Text(
+                                    text = "Card ID: ${customer.cardId}",
+                                    fontSize = 12.sp,
+                                    color = Color.Gray
+                                )
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text(
+                                        text = "Số dư: ${String.format("%,.0f", customer.balance)} VNĐ",
+                                        fontSize = 11.sp,
+                                        color = if (customer.balance > 0) Color(0xFF4CAF50) else Color(0xFFF44336)
+                                    )
+                                    Text(
+                                        text = customer.cardType.displayName,
+                                        fontSize = 11.sp,
+                                        color = Color(0xFF2196F3)
+                                    )
+                                }
+                            }
+                            if (customer != filteredCustomers.take(5).last()) {
+                                Divider()
+                            }
+                        }
+                    }
+                }
+            }
         }
         
         // Thông tin khách hàng
@@ -524,12 +597,68 @@ fun ColumnScope.ExtensionTab(
             
             Text(
                 text = when (extensionType) {
-                    ExtensionType.MONTHLY -> "Giá: 200,000 VNĐ/tháng"
+                    ExtensionType.MONTHLY -> "Giá: 100,000 VNĐ/tháng"
                     ExtensionType.TRIPS -> "Giá: 7,000 VNĐ/lượt"
                 },
                 fontSize = 12.sp,
                 color = Color.Gray
             )
+            
+            // Hiển thị số dư sau khi thanh toán
+            if (selectedCustomer != null && amount > 0) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Divider(color = Color(0xFFBDBDBD), thickness = 1.dp)
+                Spacer(modifier = Modifier.height(8.dp))
+                
+                InfoLabel(
+                    label = "Số dư hiện tại",
+                    value = "${String.format("%,.0f", selectedCustomer!!.balance)} VNĐ",
+                    valueFontWeight = FontWeight.Bold
+                )
+                
+                InfoLabel(
+                    label = "Số tiền thanh toán",
+                    value = "- ${String.format("%,.0f", amount)} VNĐ",
+                    valueColor = Color(0xFFF44336),
+                    valueFontWeight = FontWeight.Bold
+                )
+                
+                val remainingBalance = selectedCustomer!!.balance - amount
+                InfoLabel(
+                    label = "Số dư còn lại",
+                    value = "${String.format("%,.0f", remainingBalance)} VNĐ",
+                    valueColor = if (remainingBalance >= 0) Color(0xFF4CAF50) else Color(0xFFF44336),
+                    valueFontWeight = FontWeight.Bold
+                )
+                
+                // Cảnh báo nếu không đủ tiền
+                if (remainingBalance < 0) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        backgroundColor = Color(0xFFFFEBEE)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Warning,
+                                contentDescription = null,
+                                tint = Color(0xFFF44336),
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Số dư không đủ! Vui lòng nạp thêm tiền.",
+                                fontSize = 12.sp,
+                                color = Color(0xFFC62828),
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+            }
         }
     }
     
@@ -550,6 +679,12 @@ fun ColumnScope.ExtensionTab(
             text = "Xác nhận gia hạn",
             onClick = {
                 if (selectedCustomer != null && quantity.toIntOrNull() != null && quantity.toInt() > 0) {
+                    // Kiểm tra số dư
+                    if (selectedCustomer!!.balance < amount) {
+                        // Không đủ tiền - không cho gia hạn
+                        return@ConfirmButton
+                    }
+                    
                     val request = ExtensionRequest(
                         cardId = cardId,
                         extensionType = extensionType,
@@ -560,26 +695,12 @@ fun ColumnScope.ExtensionTab(
                 }
             },
             modifier = Modifier.weight(1f),
-            enabled = selectedCustomer != null && quantity.toIntOrNull() != null && quantity.toInt() > 0
+            enabled = selectedCustomer != null && 
+                      quantity.toIntOrNull() != null && 
+                      quantity.toInt() > 0 &&
+                      selectedCustomer!!.balance >= amount  // Phải đủ tiền
         )
     }
 }
 
-/**
- * Tính số chặng giữa 2 vị trí (simplified)
- */
-private fun calculateStops(from: String, to: String): Int {
-    // Logic đơn giản: mỗi trạm = 1 chặng
-    // Trong thực tế sẽ phức tạp hơn
-    return kotlin.math.abs(from.hashCode() % 10 - to.hashCode() % 10).coerceAtLeast(1)
-}
-
-/**
- * Tính cước phí dựa trên số chặng
- */
-private fun calculateFare(stops: Int): Double {
-    val basePrice = 5000.0
-    val pricePerStop = 3000.0
-    return basePrice + (stops * pricePerStop)
-}
 
