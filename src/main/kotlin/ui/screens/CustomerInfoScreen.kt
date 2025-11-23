@@ -35,9 +35,13 @@ fun CustomerInfoDialog(
     existingCustomer: Customer? = null
 ) {
     var fullName by remember { mutableStateOf(existingCustomer?.fullName ?: "") }
+    var cccd by remember { mutableStateOf(existingCustomer?.cccd ?: "") }
+    var dob by remember { mutableStateOf(existingCustomer?.dob ?: "") }
+    var address by remember { mutableStateOf(existingCustomer?.address ?: "") }
+    var phone by remember { mutableStateOf(existingCustomer?.phone ?: "") }
     var selectedCustomerType by remember { mutableStateOf(existingCustomer?.customerType ?: CustomerType.NORMAL) }
     var expiryDate by remember { mutableStateOf(existingCustomer?.expiryDate ?: LocalDate.now().plusMonths(1)) }
-    var selectedCardType by remember { mutableStateOf(existingCustomer?.cardType ?: CardType.SINGLE_TRIP) }
+    var selectedCardType by remember { mutableStateOf(existingCustomer?.cardType ?: CardType.NORMAL) }
     var balance by remember { mutableStateOf(existingCustomer?.balance?.toString() ?: "0") }
     var cardId by remember { mutableStateOf(existingCustomer?.cardId ?: generateCardId()) }
     var linkedCustomerCode by remember { mutableStateOf(existingCustomer?.linkedCustomerCode ?: "") }
@@ -139,8 +143,8 @@ fun CustomerInfoDialog(
                                             else -> CustomerType.NORMAL
                                         }
                                         selectedCardType = when(info.cardType) {
-                                            "Vé Tháng", "Ve Thang" -> CardType.MONTHLY
-                                            else -> CardType.SINGLE_TRIP
+                                            "Vé Tháng", "Ve Thang", "Thẻ Tháng" -> CardType.MONTHLY
+                                            else -> CardType.NORMAL
                                         }
                                         linkedCustomerCode = info.linkedCustomerId
                                         
@@ -186,6 +190,50 @@ fun CustomerInfoDialog(
                             placeholder = "Nhập họ tên khách hàng"
                         )
                         
+                        // CCCD
+                        CustomTextField(
+                            label = "CCCD (12 số) *",
+                            value = cccd,
+                            onValueChange = { value -> 
+                                if (value.all { it.isDigit() } && value.length <= 12) {
+                                    cccd = value
+                                }
+                            },
+                            placeholder = "123456789012"
+                        )
+                        
+                        // Ngày sinh
+                        CustomTextField(
+                            label = "Ngày sinh (dd/MM/yyyy) *",
+                            value = dob,
+                            onValueChange = { value ->
+                                // Format tự động: dd/MM/yyyy
+                                val formatted = ui.components.formatDateOfBirth(value)
+                                dob = formatted
+                            },
+                            placeholder = "01/01/2000"
+                        )
+                        
+                        // Địa chỉ
+                        CustomTextField(
+                            label = "Địa chỉ hiện tại *",
+                            value = address,
+                            onValueChange = { address = it },
+                            placeholder = "Số nhà, đường, phường/xã, quận/huyện"
+                        )
+                        
+                        // Số điện thoại
+                        CustomTextField(
+                            label = "Số điện thoại (10 số) *",
+                            value = phone,
+                            onValueChange = { value -> 
+                                if (value.all { it.isDigit() } && value.length <= 10) {
+                                    phone = value
+                                }
+                            },
+                            placeholder = "0912345678"
+                        )
+                        
                         // Loại đối tượng
                         CustomDropdown(
                             label = "Loại đối tượng *",
@@ -226,7 +274,7 @@ fun CustomerInfoDialog(
                         // Loại thẻ
                         CustomDropdown(
                             label = "Loại thẻ *",
-                            items = CardType.values().toList(),
+                            items = listOf(CardType.NORMAL, CardType.MONTHLY),  // Chỉ hiển thị NORMAL và MONTHLY
                             selectedItem = selectedCardType,
                             onItemSelected = { selectedCardType = it },
                             itemLabel = { it.displayName }
@@ -333,7 +381,7 @@ fun CustomerInfoDialog(
                             
                             val cardTypeStr = when(selectedCardType) {
                                 CardType.MONTHLY -> "Vé Tháng"
-                                else -> "Vé Lượt"
+                                else -> "Thẻ Thường"
                             }
                             
                             val expiryDateStr = expiryDate.format(DateTimeFormatter.ofPattern("dd/MM/yyyy"))
@@ -368,13 +416,18 @@ fun CustomerInfoDialog(
                                 val customer = Customer(
                                     id = existingCustomer?.id ?: UUID.randomUUID().toString(),
                                     fullName = fullName,
+                                    cccd = cccd,
+                                    dob = dob,
+                                    address = address,
+                                    phone = phone,
                                     customerType = selectedCustomerType,
                                     expiryDate = expiryDate,
                                     cardType = selectedCardType,
                                     balance = balanceValue,
                                     cardId = cardId,
                                     linkedCustomerCode = linkedCustomerCode,
-                                    photoPath = photoPath
+                                    photoPath = photoPath,
+                                    photoBytes = photoBytes
                                 )
                                 
                                 onSave(customer)

@@ -7,11 +7,10 @@ import java.time.LocalDateTime
  */
 enum class TransactionType(val displayName: String) {
     TOP_UP("Nạp tiền"),
-    DEDUCTION("Trừ tiền"),
-    EXTENSION_MONTHLY("Gia hạn tháng"),
-    EXTENSION_TRIPS("Nạp lượt"),
+    EXTENSION_MONTHLY("Mua vé tháng / Gia hạn tháng"),
     REFUND("Hoàn tiền"),
-    ROUTE_TRANSFER("Chuyển tuyến")
+    TAP("Quẹt thẻ"),
+    ROUTE_HISTORY("Lộ trình")
 }
 
 /**
@@ -40,10 +39,10 @@ data class ExtensionRequest(
 )
 
 /**
- * Loại gia hạn
+ * Loại gia hạn (chỉ còn MONTHLY)
  */
 enum class ExtensionType(val displayName: String) {
-    MONTHLY("Gia hạn tháng"),
-    TRIPS("Nạp lượt")
+    MONTHLY("Mua vé tháng / Gia hạn tháng")
+    // Đã bỏ TRIPS - không còn vé lượt
 }
 

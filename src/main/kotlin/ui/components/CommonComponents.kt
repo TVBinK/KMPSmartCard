@@ -17,6 +17,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
@@ -24,6 +25,31 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import ui.AppColors
+import ui.AppElevation
+import ui.AppRadius
+import ui.AppSpacing
+import ui.AppTypography
+
+/**
+ * Format ngày sinh tự động thêm dấu "/"
+ * Format: dd/MM/yyyy
+ * Ví dụ: "12121212" -> "12/12/1212"
+ */
+fun formatDateOfBirth(input: String): String {
+    // Chỉ lấy số
+    val digitsOnly = input.filter { it.isDigit() }
+    
+    // Giới hạn tối đa 8 số (ddMMyyyy)
+    val limitedDigits = digitsOnly.take(8)
+    
+    return when {
+        limitedDigits.isEmpty() -> ""
+        limitedDigits.length <= 2 -> limitedDigits
+        limitedDigits.length <= 4 -> "${limitedDigits.substring(0, 2)}/${limitedDigits.substring(2)}"
+        else -> "${limitedDigits.substring(0, 2)}/${limitedDigits.substring(2, 4)}/${limitedDigits.substring(4)}"
+    }
+}
 
 /**
  * Shimmer Effect cho loading
@@ -614,5 +640,260 @@ fun ImagePlaceholder(
             }
         }
     }
+}
+
+/**
+ * Menu Button với gradient background và animations
+ * Theo design spec - Height 64.dp, Border radius 12.dp
+ */
+@Composable
+fun MenuButton(
+    text: String,
+    icon: ImageVector,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    gradientStart: Color = AppColors.PrimaryGradientStart,
+    gradientEnd: Color = AppColors.PrimaryGradientEnd
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isHovered by interactionSource.collectIsHoveredAsState()
+    
+    val scale by animateFloatAsState(
+        targetValue = if (isHovered && enabled) 1.02f else 1f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessMedium
+        )
+    )
+    
+    val elevation by animateDpAsState(
+        targetValue = if (isHovered && enabled) 4.dp else AppElevation.sm,
+        animationSpec = tween(200)
+    )
+    
+    Card(
+        modifier = modifier
+            .height(64.dp)
+            .scale(scale)
+            .clickable(
+                enabled = enabled,
+                interactionSource = interactionSource,
+                indication = null
+            ) { onClick() },
+        shape = RoundedCornerShape(AppRadius.md),
+        elevation = elevation
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.verticalGradient(
+                        colors = if (enabled) listOf(gradientStart, gradientEnd) 
+                                else listOf(
+                                    gradientStart.copy(alpha = 0.5f),
+                                    gradientEnd.copy(alpha = 0.5f)
+                                )
+                    )
+                )
+                .padding(AppSpacing.md),
+            contentAlignment = Alignment.Center
+        ) {
+            Row(
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    modifier = Modifier.size(28.dp),
+                    tint = Color.White
+                )
+                Spacer(modifier = Modifier.width(AppSpacing.sm))
+                Text(
+                    text = text,
+                    fontSize = AppTypography.bodyMediumSize,
+                    fontWeight = FontWeight.Medium,
+                    color = Color.White
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Primary Button với gradient và improved animations
+ */
+@Composable
+fun PrimaryButton(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    icon: ImageVector? = null,
+    gradientStart: Color = AppColors.PrimaryGradientStart,
+    gradientEnd: Color = AppColors.PrimaryGradientEnd
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isHovered by interactionSource.collectIsHoveredAsState()
+    
+    val scale by animateFloatAsState(
+        targetValue = if (isHovered && enabled) 1.02f else 1f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessMedium
+        )
+    )
+    
+    val elevation by animateDpAsState(
+        targetValue = if (isHovered && enabled) 4.dp else AppElevation.sm,
+        animationSpec = tween(200)
+    )
+    
+    Card(
+        modifier = modifier
+            .height(56.dp)
+            .scale(scale)
+            .clickable(
+                enabled = enabled,
+                interactionSource = interactionSource,
+                indication = null
+            ) { onClick() },
+        shape = RoundedCornerShape(AppRadius.md),
+        elevation = elevation
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.horizontalGradient(
+                        colors = if (enabled) listOf(gradientStart, gradientEnd)
+                                else listOf(
+                                    gradientStart.copy(alpha = 0.5f),
+                                    gradientEnd.copy(alpha = 0.5f)
+                                )
+                    )
+                )
+                .padding(horizontal = AppSpacing.md, vertical = AppSpacing.sm),
+            contentAlignment = Alignment.Center
+        ) {
+            Row(
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (icon != null) {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = null,
+                        modifier = Modifier.size(24.dp),
+                        tint = Color.White
+                    )
+                    Spacer(modifier = Modifier.width(AppSpacing.sm))
+                }
+                Text(
+                    text = text,
+                    fontSize = AppTypography.bodyLargeSize,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color.White
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Glassmorphism Card với improved design
+ */
+@Composable
+fun GlassCard(
+    modifier: Modifier = Modifier,
+    backgroundColor: Color = AppColors.Surface.copy(alpha = 0.9f),
+    elevation: androidx.compose.ui.unit.Dp = AppElevation.sm,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isHovered by interactionSource.collectIsHoveredAsState()
+    
+    val scale by animateFloatAsState(
+        targetValue = if (isHovered) 1.01f else 1f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessMedium
+        )
+    )
+    
+    val cardElevation by animateDpAsState(
+        targetValue = if (isHovered) AppElevation.md else elevation,
+        animationSpec = tween(200)
+    )
+    
+    Card(
+        modifier = modifier
+            .scale(scale)
+            .hoverable(interactionSource),
+        shape = RoundedCornerShape(AppRadius.lg),
+        backgroundColor = backgroundColor,
+        elevation = cardElevation,
+        border = BorderStroke(1.dp, AppColors.Border.copy(alpha = 0.2f))
+    ) {
+        Column(
+            modifier = Modifier.padding(AppSpacing.md + AppSpacing.xs),
+            content = content
+        )
+    }
+}
+
+/**
+ * Badge Component với pill shape
+ */
+@Composable
+fun Badge(
+    text: String,
+    modifier: Modifier = Modifier,
+    backgroundColor: Color = AppColors.Primary,
+    textColor: Color = Color.White
+) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(AppRadius.full),
+        color = backgroundColor
+    ) {
+        Text(
+            text = text,
+            modifier = Modifier.padding(horizontal = AppSpacing.xs + 2.dp, vertical = AppSpacing.xs),
+            fontSize = AppTypography.captionSize,
+            fontWeight = FontWeight.Medium,
+            color = textColor
+        )
+    }
+}
+
+/**
+ * Status Chip với colors theo context
+ */
+@Composable
+fun StatusChip(
+    text: String,
+    status: StatusType,
+    modifier: Modifier = Modifier
+) {
+    val (bgColor, textColor) = when (status) {
+        StatusType.Success -> AppColors.Success to Color.White
+        StatusType.Warning -> AppColors.Warning to Color.White
+        StatusType.Error -> AppColors.Error to Color.White
+        StatusType.Info -> AppColors.Info to Color.White
+    }
+    
+    Badge(
+        text = text,
+        modifier = modifier,
+        backgroundColor = bgColor,
+        textColor = textColor
+    )
+}
+
+enum class StatusType {
+    Success, Warning, Error, Info
 }
 

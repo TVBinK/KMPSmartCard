@@ -15,8 +15,8 @@ enum class CustomerType(val displayName: String) {
  * Loại thẻ
  */
 enum class CardType(val displayName: String) {
-    SINGLE_TRIP("Vé Lượt"),
-    MONTHLY("Vé Tháng")
+    NORMAL("Thẻ Thường"),
+    MONTHLY("Thẻ Tháng")
 }
 
 /**
@@ -34,8 +34,12 @@ enum class CardStatus {
 data class Customer(
     val id: String = "",
     val fullName: String = "",
+    val cccd: String = "",  // 12-digit CCCD
+    val dob: String = "",  // Ngày sinh (dd/MM/yyyy)
+    val address: String = "",  // Địa chỉ hiện tại
+    val phone: String = "",  // Số điện thoại (10 digits)
     val customerType: CustomerType = CustomerType.NORMAL,
-    val cardType: CardType = CardType.SINGLE_TRIP,
+    val cardType: CardType = CardType.NORMAL,  // Mặc định Thẻ Thường
     val expiryDate: LocalDate = LocalDate.now().plusMonths(1),
     val balance: Double = 0.0,
     val cardId: String = "",
@@ -55,11 +59,11 @@ data class Customer(
         // Nếu còn hạn → Kiểm tra loại thẻ
         return when (cardType) {
             CardType.MONTHLY -> {
-                // Vé tháng: Chỉ cần kiểm tra ngày hết hạn (đã check ở trên)
+                // Thẻ tháng: Chỉ cần kiểm tra ngày hết hạn (đã check ở trên)
                 CardStatus.VALID
             }
-            CardType.SINGLE_TRIP -> {
-                // Vé lượt: Cần kiểm tra số dư
+            CardType.NORMAL -> {
+                // Thẻ thường: Cần kiểm tra số dư
                 if (balance <= 0) CardStatus.INSUFFICIENT_BALANCE else CardStatus.VALID
             }
         }

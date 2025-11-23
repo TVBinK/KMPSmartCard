@@ -55,9 +55,11 @@ import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Warning
@@ -112,11 +114,16 @@ fun LoadCardInfoDialog(
 
     var cardId by remember { mutableStateOf("") }
     var fullName by remember { mutableStateOf("") }
+    var cccd by remember { mutableStateOf("") }
+    var dob by remember { mutableStateOf("") }
+    var address by remember { mutableStateOf("") }
+    var phone by remember { mutableStateOf("") }
     var customerType by remember { mutableStateOf(CustomerType.NORMAL) }
-    var cardType by remember { mutableStateOf(CardType.SINGLE_TRIP) }
+    var cardType by remember { mutableStateOf(CardType.NORMAL) }  // Mặc định Thẻ Thường
     var expiryDate by remember { mutableStateOf(LocalDate.now().plusMonths(1)) }
     var balance by remember { mutableStateOf("100000") }
     var pin by remember { mutableStateOf("") }
+    var pinVisible by remember { mutableStateOf(false) }
     var linkedCustomerCode by remember { mutableStateOf("") }
     var photoBytes by remember { mutableStateOf<ByteArray?>(null) }
 
@@ -300,20 +307,35 @@ fun LoadCardInfoDialog(
                             },
                             selectedExistingCustomer = selectedExistingCustomer,
                             onSelectExistingCustomer = { customer ->
+                                println("🔵 [LoadCardInfo] Chọn khách hàng có sẵn:")
+                                println("   - Card ID: ${customer.cardId}")
+                                println("   - Họ tên: ${customer.fullName}")
+                                println("   - CCCD: ${customer.cccd}")
+                                println("   - Ngày sinh: ${customer.dob}")
+                                println("   - Địa chỉ: ${customer.address}")
+                                println("   - Số điện thoại: ${customer.phone}")
+                                println("   - Loại đối tượng: ${customer.customerType}")
+                                println("   - Loại thẻ: ${customer.cardType}")
+                                println("   - Ngày hết hạn: ${customer.expiryDate}")
+                                println("   - Số dư: ${customer.balance}")
+                                println("   - Mã liên kết: ${customer.linkedCustomerCode}")
+                                println("   - Có ảnh: ${customer.photoBytes != null}")
                                 selectedExistingCustomer = customer
-                                fullName = customer.fullName
-                                customerType = customer.customerType
-                                cardType = customer.cardType
-                                expiryDate = customer.expiryDate
-                                balance = customer.balance.toInt().toString()
-                                linkedCustomerCode = customer.linkedCustomerCode
+                                // Điền đầy đủ tất cả thông tin từ khách hàng đã chọn bằng cách gọi callbacks
+                                // Sử dụng các callback để cập nhật state đúng cách
                             },
                             cardId = cardId,
                             onCardIdChange = { cardId = it },
                             fullName = fullName,
                             onFullNameChange = { fullName = it },
-                            customerType = customerType,
-                            onCustomerTypeChange = { customerType = it },
+                            cccd = cccd,
+                            onCccdChange = { cccd = it },
+                            dob = dob,
+                            onDobChange = { dob = it },
+                            address = address,
+                            onAddressChange = { address = it },
+                            phone = phone,
+                            onPhoneChange = { phone = it },
                             cardType = cardType,
                             onCardTypeChange = { cardType = it },
                             expiryDate = expiryDate,
@@ -325,7 +347,7 @@ fun LoadCardInfoDialog(
                             photoBytes = photoBytes,
                             onPhotoChange = { photoBytes = it },
                             onNext = {
-                                if (validateInput(cardId, fullName, pin)) {
+                                if (validateInput(cardId, fullName, cccd, dob, phone, pin)) {
                                     currentStep = LoadStep.WRITE_DATA
                                     statusMessage = "Sẵn sàng ghi dữ liệu lên thẻ"
                                 } else {
@@ -337,6 +359,10 @@ fun LoadCardInfoDialog(
                         LoadStep.WRITE_DATA -> WriteDataStepContent(
                             cardId = cardId,
                             fullName = fullName,
+                            cccd = cccd,
+                            dob = dob,
+                            address = address,
+                            phone = phone,
                             customerType = customerType,
                             cardType = cardType,
                             balance = balance,
@@ -361,12 +387,16 @@ fun LoadCardInfoDialog(
                                     if (writeSuccess) {
                                         val newCustomer = Customer(
                                             id = cardId,
+                                            cardId = cardId,
                                             fullName = fullName,
+                                            cccd = cccd,
+                                            dob = dob,
+                                            address = address,
+                                            phone = phone,
                                             customerType = customerType,
                                             cardType = cardType,
                                             expiryDate = expiryDate,
                                             balance = balance.toDoubleOrNull() ?: 0.0,
-                                            cardId = cardId,
                                             linkedCustomerCode = linkedCustomerCode,
                                             photoBytes = photoBytes
                                         )
@@ -378,7 +408,8 @@ fun LoadCardInfoDialog(
 
                                         val insertSuccess = if (existing == null) {
                                             withContext(Dispatchers.IO) {
-                                                DatabaseManager.insertCustomer(newCustomer)
+                                                // Lưu với mã hóa bằng PIN
+                                                DatabaseManager.insertCustomer(newCustomer, pin)
                                             }
                                         } else {
                                             false
@@ -797,8 +828,14 @@ private fun InputInfoStepContent(
     onCardIdChange: (String) -> Unit,
     fullName: String,
     onFullNameChange: (String) -> Unit,
-    customerType: CustomerType,
-    onCustomerTypeChange: (CustomerType) -> Unit,
+    cccd: String,
+    onCccdChange: (String) -> Unit,
+    dob: String,
+    onDobChange: (String) -> Unit,
+    address: String,
+    onAddressChange: (String) -> Unit,
+    phone: String,
+    onPhoneChange: (String) -> Unit,
     cardType: CardType,
     onCardTypeChange: (CardType) -> Unit,
     expiryDate: LocalDate,
@@ -811,7 +848,58 @@ private fun InputInfoStepContent(
     onPhotoChange: (ByteArray?) -> Unit,
     onNext: () -> Unit
 ) {
+    var pinVisible by remember { mutableStateOf(false) }
     val dateFormatter = remember { DateTimeFormatter.ofPattern("dd/MM/yyyy") }
+    
+    // Tự động điền thông tin khi chọn khách hàng có sẵn
+    LaunchedEffect(selectedExistingCustomer) {
+        selectedExistingCustomer?.let { customer ->
+            println("🟢 [LoadCardInfo] LaunchedEffect: Bắt đầu điền thông tin từ khách hàng đã chọn")
+            println("   - Họ tên: '${customer.fullName}' (rỗng: ${customer.fullName.isBlank()})")
+            println("   - CCCD: '${customer.cccd}' (rỗng: ${customer.cccd.isBlank()})")
+            println("   - Ngày sinh: '${customer.dob}' (rỗng: ${customer.dob.isBlank()})")
+            println("   - Địa chỉ: '${customer.address}' (rỗng: ${customer.address.isBlank()})")
+            println("   - Số điện thoại: '${customer.phone}' (rỗng: ${customer.phone.isBlank()})")
+            println("   - Loại thẻ: ${customer.cardType}")
+            println("   - Ngày hết hạn: ${customer.expiryDate}")
+            println("   - Số dư: ${customer.balance}")
+            println("   - Có ảnh: ${customer.photoBytes != null}")
+            
+            // Điền đầy đủ tất cả thông tin từ khách hàng đã chọn
+            println("   → Gọi onFullNameChange('${customer.fullName}')")
+            onFullNameChange(customer.fullName)
+            
+            println("   → Gọi onCccdChange('${customer.cccd}')")
+            onCccdChange(customer.cccd)
+            
+            println("   → Gọi onDobChange('${customer.dob}')")
+            onDobChange(customer.dob)
+            
+            println("   → Gọi onAddressChange('${customer.address}')")
+            onAddressChange(customer.address)
+            
+            println("   → Gọi onPhoneChange('${customer.phone}')")
+            onPhoneChange(customer.phone)
+            
+            println("   → Gọi onCardTypeChange(${customer.cardType})")
+            onCardTypeChange(customer.cardType)
+            
+            println("   → Gọi onExpiryDateChange(${customer.expiryDate})")
+            onExpiryDateChange(customer.expiryDate)
+            
+            println("   → Gọi onBalanceChange('${customer.balance.toInt().toString()}')")
+            onBalanceChange(customer.balance.toInt().toString())
+            
+            println("   → Gọi onPhotoChange(${if (customer.photoBytes != null) "có ảnh" else "null"})")
+            onPhotoChange(customer.photoBytes)
+            
+            println("✅ [LoadCardInfo] LaunchedEffect: Đã gọi tất cả callbacks để điền thông tin")
+            // Card ID và PIN để trống để user nhập mới cho thẻ này
+        } ?: run {
+            println("🟡 [LoadCardInfo] LaunchedEffect: selectedExistingCustomer = null, không điền thông tin")
+        }
+    }
+    
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -909,25 +997,51 @@ private fun InputInfoStepContent(
                 }
 
                 if (selectedExistingCustomer != null) {
-                    Card(backgroundColor = Color(0xFFF1F8E9)) {
+                    // Kiểm tra xem khách hàng có đầy đủ thông tin không
+                    val hasCompleteInfo = selectedExistingCustomer.cccd.isNotBlank() && 
+                                         selectedExistingCustomer.dob.isNotBlank() && 
+                                         selectedExistingCustomer.address.isNotBlank() && 
+                                         selectedExistingCustomer.phone.isNotBlank()
+                    
+                    Card(backgroundColor = if (hasCompleteInfo) Color(0xFFF1F8E9) else Color(0xFFFFF3E0)) {
                         Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Icon(
-                                    Icons.Default.Check,
+                                    if (hasCompleteInfo) Icons.Default.Check else Icons.Default.Warning,
                                     contentDescription = null,
-                                    tint = Color(0xFF558B2F),
+                                    tint = if (hasCompleteInfo) Color(0xFF558B2F) else Color(0xFFFF9800),
                                     modifier = Modifier.size(20.dp)
                                 )
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text(
                                     text = "Đã chọn: ${selectedExistingCustomer.fullName}",
                                     fontSize = 13.sp,
-                                    color = Color(0xFF558B2F),
+                                    color = if (hasCompleteInfo) Color(0xFF558B2F) else Color(0xFFFF9800),
                                     fontWeight = FontWeight.Bold
                                 )
                             }
+                            if (hasCompleteInfo) {
+                                Text(
+                                    "✓ Tất cả thông tin đã được điền tự động từ khách hàng đã chọn",
+                                    fontSize = 11.sp,
+                                    color = Color(0xFF558B2F),
+                                    fontWeight = FontWeight.Medium
+                                )
+                            } else {
+                                Text(
+                                    "⚠️ Khách hàng này thiếu một số thông tin (CCCD, Ngày sinh, Địa chỉ, Số điện thoại)",
+                                    fontSize = 11.sp,
+                                    color = Color(0xFFFF9800),
+                                    fontWeight = FontWeight.Medium
+                                )
+                                Text(
+                                    "• Vui lòng điền đầy đủ các thông tin còn thiếu",
+                                    fontSize = 11.sp,
+                                    color = Color(0xFF666666)
+                                )
+                            }
                             Text(
-                                "• Thông tin khách hàng đã được điền tự động",
+                                "• Bạn có thể chỉnh sửa bất kỳ thông tin nào nếu cần",
                                 fontSize = 11.sp,
                                 color = Color(0xFF666666)
                             )
@@ -947,7 +1061,27 @@ private fun InputInfoStepContent(
                 }
             }
 
-            val editable = !useExistingData || selectedExistingCustomer == null
+            // Cho phép chỉnh sửa tất cả các trường ngay cả khi chọn khách hàng có sẵn
+            val editable = true
+
+            // Validation states - hiển thị màu đỏ khi thiếu hoặc không hợp lệ
+            val isCardIdError = cardId.isBlank()
+            val isFullNameError = fullName.isBlank()
+            val isCccdError = cccd.isBlank() || cccd.length != 12 || !cccd.all { it.isDigit() }
+            val isPhoneError = phone.isBlank() || phone.length != 10 || !phone.all { it.isDigit() }
+            val isDobError = try {
+                if (dob.isBlank() || !dob.matches(Regex("\\d{2}/\\d{2}/\\d{4}"))) {
+                    true
+                } else {
+                    val formatter = DateTimeFormatter.ofPattern("dd/MM/yyyy")
+                    val dobDate = LocalDate.parse(dob, formatter)
+                    !dobDate.isBefore(LocalDate.now())
+                }
+            } catch (e: Exception) {
+                true
+            }
+            val isAddressError = address.isBlank()
+            val isPinError = pin.isBlank() || pin.length < 4 || pin.length > 6
 
             // Row 1: Mã thẻ + Họ tên
             Row(
@@ -960,7 +1094,12 @@ private fun InputInfoStepContent(
                     label = { Text("Mã thẻ *") },
                     leadingIcon = { Icon(Icons.Default.Star, contentDescription = null) },
                     modifier = Modifier.weight(1f),
-                    singleLine = true
+                    singleLine = true,
+                    isError = isCardIdError,
+                    colors = TextFieldDefaults.outlinedTextFieldColors(
+                        focusedBorderColor = if (isCardIdError) Color(0xFFF44336) else Color(0xFF2196F3),
+                        unfocusedBorderColor = if (isCardIdError) Color(0xFFF44336) else Color.Gray
+                    )
                 )
 
                 OutlinedTextField(
@@ -971,48 +1110,119 @@ private fun InputInfoStepContent(
                     modifier = Modifier.weight(1f),
                     singleLine = true,
                     enabled = editable,
+                    isError = isFullNameError,
                     colors = TextFieldDefaults.outlinedTextFieldColors(
                         disabledTextColor = Color.Black,
-                        disabledLabelColor = Color.Gray
+                        disabledLabelColor = Color.Gray,
+                        focusedBorderColor = if (isFullNameError) Color(0xFFF44336) else Color(0xFF2196F3),
+                        unfocusedBorderColor = if (isFullNameError) Color(0xFFF44336) else Color.Gray
                     )
                 )
             }
 
-            // Row 2: Loại đối tượng + Loại thẻ
+            // Row 1.5: CCCD + Số điện thoại
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                var customerTypeExpanded by remember { mutableStateOf(false) }
-                ExposedDropdownMenuBox(
-                    expanded = customerTypeExpanded,
-                    onExpandedChange = { if (editable) customerTypeExpanded = !customerTypeExpanded },
-                    modifier = Modifier.weight(1f)
-                ) {
-                    OutlinedTextField(
-                        value = customerType.displayName,
-                        onValueChange = {},
-                        readOnly = true,
-                        label = { Text("Loại đối tượng") },
-                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(customerTypeExpanded) },
-                        modifier = Modifier.fillMaxWidth(),
-                        enabled = editable
-                    )
-                    ExposedDropdownMenu(
-                        expanded = customerTypeExpanded,
-                        onDismissRequest = { customerTypeExpanded = false }
-                    ) {
-                        CustomerType.values().forEach { type ->
-                            DropdownMenuItem(onClick = {
-                                onCustomerTypeChange(type)
-                                customerTypeExpanded = false
-                            }) {
-                                Text(type.displayName)
-                            }
+                OutlinedTextField(
+                    value = cccd,
+                    onValueChange = { value -> 
+                        // Chỉ cho phép số và tối đa 12 ký tự
+                        if (value.all { it.isDigit() } && value.length <= 12) {
+                            onCccdChange(value)
                         }
-                    }
-                }
+                    },
+                    label = { Text("CCCD (12 số) *") },
+                    leadingIcon = { Icon(Icons.Default.Person, contentDescription = null) },
+                    modifier = Modifier.weight(1f),
+                    singleLine = true,
+                    enabled = editable,
+                    isError = isCccdError,
+                    colors = TextFieldDefaults.outlinedTextFieldColors(
+                        disabledTextColor = Color.Black,
+                        disabledLabelColor = Color.Gray,
+                        focusedBorderColor = if (isCccdError) Color(0xFFF44336) else Color(0xFF2196F3),
+                        unfocusedBorderColor = if (isCccdError) Color(0xFFF44336) else Color.Gray
+                    ),
+                    placeholder = { Text("123456789012") }
+                )
 
+                OutlinedTextField(
+                    value = phone,
+                    onValueChange = { value -> 
+                        // Chỉ cho phép số và tối đa 10 ký tự
+                        if (value.all { it.isDigit() } && value.length <= 10) {
+                            onPhoneChange(value)
+                        }
+                    },
+                    label = { Text("Số điện thoại (10 số) *") },
+                    leadingIcon = { Icon(Icons.Default.Phone, contentDescription = null) },
+                    modifier = Modifier.weight(1f),
+                    singleLine = true,
+                    enabled = editable,
+                    isError = isPhoneError,
+                    colors = TextFieldDefaults.outlinedTextFieldColors(
+                        disabledTextColor = Color.Black,
+                        disabledLabelColor = Color.Gray,
+                        focusedBorderColor = if (isPhoneError) Color(0xFFF44336) else Color(0xFF2196F3),
+                        unfocusedBorderColor = if (isPhoneError) Color(0xFFF44336) else Color.Gray
+                    ),
+                    placeholder = { Text("0912345678") }
+                )
+            }
+
+            // Row 1.6: Ngày sinh + Địa chỉ
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                OutlinedTextField(
+                    value = dob,
+                    onValueChange = { value ->
+                        // Format tự động: dd/MM/yyyy
+                        val formatted = ui.components.formatDateOfBirth(value)
+                        onDobChange(formatted)
+                    },
+                    label = { Text("Ngày sinh (dd/MM/yyyy) *") },
+                    leadingIcon = { Icon(Icons.Default.Info, contentDescription = null) },
+                    modifier = Modifier.weight(1f),
+                    singleLine = true,
+                    enabled = editable,
+                    isError = isDobError,
+                    colors = TextFieldDefaults.outlinedTextFieldColors(
+                        disabledTextColor = Color.Black,
+                        disabledLabelColor = Color.Gray,
+                        focusedBorderColor = if (isDobError) Color(0xFFF44336) else Color(0xFF2196F3),
+                        unfocusedBorderColor = if (isDobError) Color(0xFFF44336) else Color.Gray
+                    ),
+                    placeholder = { Text("01/01/2000") }
+                )
+
+                OutlinedTextField(
+                    value = address,
+                    onValueChange = onAddressChange,
+                    label = { Text("Địa chỉ hiện tại *") },
+                    leadingIcon = { Icon(Icons.Default.Home, contentDescription = null) },
+                    modifier = Modifier.weight(1f),
+                    singleLine = true,
+                    enabled = editable,
+                    isError = isAddressError,
+                    colors = TextFieldDefaults.outlinedTextFieldColors(
+                        disabledTextColor = Color.Black,
+                        disabledLabelColor = Color.Gray,
+                        focusedBorderColor = if (isAddressError) Color(0xFFF44336) else Color(0xFF2196F3),
+                        unfocusedBorderColor = if (isAddressError) Color(0xFFF44336) else Color.Gray
+                    ),
+                    placeholder = { Text("Số nhà, đường, phường/xã, quận/huyện") }
+                )
+            }
+
+            // Row 2: Loại thẻ (đã xóa Loại đối tượng)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
                 var cardTypeExpanded by remember { mutableStateOf(false) }
                 ExposedDropdownMenuBox(
                     expanded = cardTypeExpanded,
@@ -1042,6 +1252,9 @@ private fun InputInfoStepContent(
                         }
                     }
                 }
+                
+                // Spacer để giữ layout đẹp
+                Spacer(modifier = Modifier.weight(1f))
             }
 
             // Row 3: Số dư + Mã PIN
@@ -1064,8 +1277,23 @@ private fun InputInfoStepContent(
                     onValueChange = { if (it.length <= 6) onPinChange(it) },
                     label = { Text("Mã PIN (4-6 số) *") },
                     leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null) },
+                    trailingIcon = {
+                        IconButton(onClick = { pinVisible = !pinVisible }) {
+                            Text(
+                                text = if (pinVisible) "Ẩn" else "Hiện",
+                                fontSize = 12.sp,
+                                color = Color.Gray
+                            )
+                        }
+                    },
                     modifier = Modifier.weight(1f),
-                    singleLine = true
+                    singleLine = true,
+                    visualTransformation = if (pinVisible) androidx.compose.ui.text.input.VisualTransformation.None else androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                    isError = isPinError,
+                    colors = TextFieldDefaults.outlinedTextFieldColors(
+                        focusedBorderColor = if (isPinError) Color(0xFFF44336) else Color(0xFF2196F3),
+                        unfocusedBorderColor = if (isPinError) Color(0xFFF44336) else Color.Gray
+                    )
                 )
             }
 
@@ -1261,6 +1489,10 @@ private fun InputInfoStepContent(
 private fun WriteDataStepContent(
     cardId: String,
     fullName: String,
+    cccd: String,
+    dob: String,
+    address: String,
+    phone: String,
     customerType: CustomerType,
     cardType: CardType,
     balance: String,
@@ -1285,6 +1517,11 @@ private fun WriteDataStepContent(
                 InfoRow("Mã thẻ", cardId)
                 Divider()
                 InfoRow("Họ tên", fullName)
+                InfoRow("CCCD", cccd)
+                InfoRow("Ngày sinh", dob)
+                InfoRow("Địa chỉ", address)
+                InfoRow("Số điện thoại", phone)
+                Divider()
                 InfoRow("Loại đối tượng", customerType.displayName)
                 InfoRow("Loại thẻ", cardType.displayName)
                 InfoRow("Số dư", String.format("%,d VNĐ", balance.toLongOrNull() ?: 0))
@@ -1332,8 +1569,31 @@ private fun InfoRow(label: String, value: String) {
     }
 }
 
-private fun validateInput(cardId: String, fullName: String, pin: String): Boolean {
-    return cardId.isNotBlank() && fullName.isNotBlank() && pin.length in 4..6
+private fun validateInput(cardId: String, fullName: String, cccd: String, dob: String, phone: String, pin: String): Boolean {
+    // Validate CCCD: đúng 12 chữ số
+    val isValidCccd = cccd.length == 12 && cccd.all { it.isDigit() }
+    
+    // Validate SĐT: đúng 10 chữ số
+    val isValidPhone = phone.length == 10 && phone.all { it.isDigit() }
+    
+    // Validate DOB: định dạng dd/MM/yyyy và < ngày hiện tại
+    var isValidDob = false
+    try {
+        if (dob.matches(Regex("\\d{2}/\\d{2}/\\d{4}"))) {
+            val formatter = DateTimeFormatter.ofPattern("dd/MM/yyyy")
+            val dobDate = LocalDate.parse(dob, formatter)
+            isValidDob = dobDate.isBefore(LocalDate.now())
+        }
+    } catch (e: Exception) {
+        isValidDob = false
+    }
+    
+    return cardId.isNotBlank() && 
+           fullName.isNotBlank() && 
+           isValidCccd && 
+           isValidDob && 
+           isValidPhone && 
+           pin.length in 4..6
 }
 
 private suspend fun writeDataToCard(

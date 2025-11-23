@@ -394,21 +394,102 @@ public class BusSmartCard {
 
             if (response != null) {
                 byte[] responseBytes = response.getBytes();
+                byte[] responseData = response.getData();
                 int sw = response.getSW();
 
-                if (responseBytes.length >= 3 && responseBytes[0] == (byte) 0x00 && sw == 0x9000) {
-                    // PIN đúng
-                    unknownIssue = false;
-                    isCardBlocked = false;
-                    counter = 0;
-                    HelpMethod.debugLog("PIN verified successfully");
-                    return true;
-                } else if (responseBytes.length >= 3 && responseBytes[0] != (byte) 0x00 && sw == 0x9000) {
-                    // PIN sai, còn cơ hội
-                    unknownIssue = false;
-                    counter = responseBytes[0];
-                    System.err.println("Incorrect PIN. Attempts remaining: " + (4 - counter));
-                    return false;
+                // Log chi tiết để debug
+                HelpMethod.debugLog("checkPin response - Data length: " + 
+                    (responseData != null ? responseData.length : 0) + 
+                    ", Total bytes: " + responseBytes.length + 
+                    ", SW: " + Integer.toHexString(sw));
+                
+                // Log toàn bộ response bytes để debug
+                if (responseBytes != null && responseBytes.length > 0) {
+                    StringBuilder sb = new StringBuilder("Response bytes: ");
+                    for (int i = 0; i < responseBytes.length; i++) {
+                        sb.append(String.format("%02X ", responseBytes[i] & 0xFF));
+                    }
+                    HelpMethod.debugLog(sb.toString());
+                }
+
+                if (sw == 0x9000) {
+                    // SW: 9000 là thành công
+                    if (responseData != null && responseData.length > 0) {
+                        // Có data trong response, kiểm tra byte đầu tiên
+                        byte firstByte = responseData[0];
+                        HelpMethod.debugLog("First data byte: " + String.format("%02X", firstByte & 0xFF));
+                        
+                        if (firstByte == (byte) 0x00) {
+                            // PIN đúng
+                            unknownIssue = false;
+                            isCardBlocked = false;
+                            counter = 0;
+                            HelpMethod.debugLog("PIN verified successfully");
+                            return true;
+                        } else {
+                            // PIN sai, byte đầu tiên chứa số lần sai
+                            unknownIssue = false;
+                            counter = (byte)(firstByte & 0xFF); // Đảm bảo là unsigned
+                            if (counter >= 4) {
+                                isCardBlocked = true;
+                                System.err.println("Card is blocked due to too many incorrect PIN attempts");
+                            } else {
+                                System.err.println("Incorrect PIN. Attempts remaining: " + (4 - counter));
+                            }
+                            return false;
+                        }
+                    } else {
+                        // Response không có data nhưng SW: 9000
+                        // Có thể card trả về SW 9000 cho cả PIN đúng và sai
+                        // Cần kiểm tra responseBytes để xem có byte nào khác không
+                        // Nếu responseBytes chỉ có 2 bytes (SW), có thể là PIN đúng
+                        // Nếu có thêm bytes, có thể là thông tin về số lần sai
+                        if (responseBytes != null && responseBytes.length > 2) {
+                            // Có thêm bytes ngoài SW, có thể là thông tin về PIN sai
+                            // Byte cuối cùng là SW (90 00), byte trước đó có thể là số lần sai
+                            int dataIndex = responseBytes.length - 3; // Trước SW
+                            if (dataIndex >= 0) {
+                                byte statusByte = responseBytes[dataIndex];
+                                HelpMethod.debugLog("Status byte before SW: " + String.format("%02X", statusByte & 0xFF));
+                                
+                                if (statusByte == (byte) 0x00) {
+                                    // PIN đúng
+                                    unknownIssue = false;
+                                    isCardBlocked = false;
+                                    counter = 0;
+                                    HelpMethod.debugLog("PIN verified successfully (status byte = 0x00)");
+                                    return true;
+                                } else {
+                                    // PIN sai
+                                    unknownIssue = false;
+                                    counter = (byte)(statusByte & 0xFF);
+                                    if (counter >= 4) {
+                                        isCardBlocked = true;
+                                        System.err.println("Card is blocked due to too many incorrect PIN attempts");
+                                    } else {
+                                        System.err.println("Incorrect PIN. Attempts remaining: " + (4 - counter));
+                                    }
+                                    return false;
+                                }
+                            }
+                        }
+                        
+                        // Nếu chỉ có SW 9000 và không có data, không thể xác định chính xác PIN đúng hay sai
+                        // Vì getCustomerInfo() không yêu cầu PIN đã được xác thực, nên không thể dùng để xác nhận
+                        // Để an toàn, luôn coi như PIN sai nếu không có data xác nhận
+                        // Card nên trả về data để phân biệt PIN đúng/sai (0x00 = đúng, >0x00 = số lần sai)
+                        HelpMethod.debugLog("SW 9000 with no data - card should return data to distinguish correct/incorrect PIN");
+                        HelpMethod.debugLog("Treating as incorrect PIN for security (no confirmation data)");
+                        unknownIssue = false;
+                        counter++;
+                        if (counter >= 4) {
+                            isCardBlocked = true;
+                            System.err.println("Card is blocked due to too many incorrect PIN attempts");
+                        } else {
+                            System.err.println("Incorrect PIN (no confirmation data in response). Attempts remaining: " + (4 - counter));
+                        }
+                        return false;
+                    }
                 } else if (sw == 0x6983) {
                     // Thẻ bị khóa
                     unknownIssue = false;

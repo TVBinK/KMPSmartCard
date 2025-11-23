@@ -56,14 +56,46 @@ fun SmartCardManagementDialog(
     var isConnected by remember { mutableStateOf(false) }
     var cardReaderStatus by remember { mutableStateOf("Chưa kết nối") }
     var isReadingCard by remember { mutableStateOf(false) }
+    var showChangePinDialog by remember { mutableStateOf(false) }
     
     val scope = rememberCoroutineScope()
     
-    // Check connection status khi dialog mở
+    // Check connection status và tự động đọc thẻ khi dialog mở
     LaunchedEffect(Unit) {
         isConnected = smartcard.BusCardManager.isConnected
         if (isConnected) {
             cardReaderStatus = "✓ Đã kết nối với card reader"
+            // Tự động đọc thẻ khi đã kết nối
+            scope.launch {
+                isReadingCard = true
+                val infoResult = withContext(Dispatchers.IO) {
+                    smartcard.BusCardManager.getCustomerInfo()
+                }
+                val cardIdResult = withContext(Dispatchers.IO) {
+                    smartcard.BusCardManager.getCardId()
+                }
+                isReadingCard = false
+                
+                infoResult.onSuccess { info ->
+                    cardIdResult.onSuccess { cardId ->
+                        // Reload danh sách customers từ database
+                        customers = withContext(Dispatchers.IO) {
+                            database.DatabaseManager.getAllCustomers()
+                        }
+                        
+                        // Tìm customer trong DB
+                        val customer = customers.find { it.cardId == cardId }
+                        if (customer != null) {
+                            selectedCustomer = customer
+                            println("✓ Tự động đọc thẻ thành công: $cardId - ${customer.fullName}")
+                        } else {
+                            println("⚠ Thẻ $cardId chưa có trong database")
+                        }
+                    }
+                }.onFailure { error ->
+                    println("✗ Lỗi tự động đọc thẻ: ${error.message}")
+                }
+            }
         }
         println("🔍 Initial connection check: isConnected = $isConnected")
     }
@@ -199,19 +231,43 @@ fun SmartCardManagementDialog(
                 }
         }
         
-        // Bottom button
+        // Bottom buttons
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(Color(0xFFF5F5F5))
                 .padding(16.dp),
-            horizontalArrangement = Arrangement.End
+            horizontalArrangement = Arrangement.SpaceBetween
         ) {
+            // Nút thay đổi PIN (chỉ hiển thị khi đã kết nối)
+            if (isConnected) {
+                Button(
+                    onClick = { showChangePinDialog = true },
+                    colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF2196F3))
+                ) {
+                    Icon(Icons.Default.Lock, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("Thay đổi PIN", color = Color.White, fontSize = 14.sp)
+                }
+            } else {
+                Spacer(Modifier.width(1.dp))
+            }
+            
             TextButton(onClick = onDismiss) {
                 Text("Đóng", color = Color(0xFFF44336), fontSize = 14.sp, fontWeight = FontWeight.Medium)
             }
         }
         }
+        }
+        
+        // Change PIN Dialog
+        if (showChangePinDialog) {
+            ChangePinDialog(
+                onDismiss = { showChangePinDialog = false },
+                onSuccess = {
+                    println("✅ PIN changed successfully")
+                }
+            )
         }
     }
 }
@@ -331,6 +387,20 @@ private fun InformationTab(
                     InfoRow("Card ID", customer.cardId)
                     Divider()
                     InfoRow("Loại thẻ", customer.cardType.displayName)
+                    
+                    // Hiển thị các trường mới nếu có
+                    if (customer.cccd.isNotEmpty()) {
+                        InfoRow("CCCD", customer.cccd)
+                    }
+                    if (customer.dob.isNotEmpty()) {
+                        InfoRow("Ngày sinh", customer.dob)
+                    }
+                    if (customer.address.isNotEmpty()) {
+                        InfoRow("Địa chỉ", customer.address)
+                    }
+                    if (customer.phone.isNotEmpty()) {
+                        InfoRow("Số điện thoại", customer.phone)
+                    }
                     InfoRow("Loại đối tượng", customer.customerType.displayName)
                     InfoRow(
                         "Ngày hết hạn", 
@@ -464,7 +534,7 @@ private fun TransactionTab(
                         val transactionType = transaction["transaction_type"] as? String ?: ""
                         
                         // Xác định loại giao dịch (cộng/trừ tiền)
-                        val isDeduction = transactionType in listOf("DEDUCTION", "EXTEND_MONTHLY", "ROUTE_TRANSFER")
+                        val isDeduction = transactionType in listOf("EXTEND_MONTHLY", "MONTHLY_PURCHASE")
                         val displayAmount = if (isDeduction && amount > 0) -amount else amount
                         
                         Text(

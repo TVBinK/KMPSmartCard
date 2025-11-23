@@ -529,7 +529,7 @@ data class CustomerInfo(
     val fullName: String,
     val customerType: String,    // HSSV, Người cao tuổi, Thông thường
     val expiryDate: String,       // dd/MM/yyyy
-    val cardType: String,         // Vé Lượt, Vé Tháng
+    val cardType: String,         // Thẻ Thường, Vé Tháng
     val linkedCustomerId: String
 )
 

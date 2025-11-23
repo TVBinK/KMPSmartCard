@@ -308,7 +308,7 @@ fun TicketValidationDialog(
                                 // Parse card type
                                 val cardType = when {
                                     info.cardType.contains("Tháng") -> CardType.MONTHLY
-                                    else -> CardType.SINGLE_TRIP
+                                    else -> CardType.NORMAL  // Mặc định là Thẻ Thường
                                 }
                                 
                                 // Parse expiry date

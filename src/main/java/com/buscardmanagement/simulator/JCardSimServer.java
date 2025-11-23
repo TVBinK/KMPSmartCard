@@ -49,6 +49,7 @@ public class JCardSimServer {
         Map<String, String> cardData = new HashMap<>();
         boolean isInitialized = false; // Thẻ chưa được khởi tạo
         boolean appletSelected = false;
+        boolean pinVerified = false; // PIN đã được xác thực chưa
         
         try (
             DataInputStream in = new DataInputStream(socket.getInputStream());
@@ -68,10 +69,11 @@ public class JCardSimServer {
                 
                 System.out.println("→ Received APDU: " + bytesToHex(apduBytes));
                 
-                // Xử lý APDU với trạng thái khởi tạo
-                Object[] result = processAPDU(apduBytes, cardData, isInitialized);
+                // Xử lý APDU với trạng thái khởi tạo và PIN verification
+                Object[] result = processAPDU(apduBytes, cardData, isInitialized, pinVerified);
                 byte[] response = (byte[]) result[0];
                 isInitialized = (boolean) result[1];
+                pinVerified = (boolean) result[2];
                 
                 // Gửi length (2 bytes, big-endian) theo protocol của client
                 out.writeShort(response.length);
@@ -89,9 +91,9 @@ public class JCardSimServer {
         }
     }
     
-    private static Object[] processAPDU(byte[] apdu, Map<String, String> cardData, boolean isInitialized) {
+    private static Object[] processAPDU(byte[] apdu, Map<String, String> cardData, boolean isInitialized, boolean pinVerified) {
         if (apdu.length < 4) {
-            return new Object[]{new byte[]{(byte)0x6F, 0x00}, isInitialized}; // SW_UNKNOWN
+            return new Object[]{new byte[]{(byte)0x6F, 0x00}, isInitialized, pinVerified}; // SW_UNKNOWN
         }
         
         byte cla = apdu[0];
@@ -102,17 +104,46 @@ public class JCardSimServer {
         // SELECT APPLET (00 A4 04 00) - Luôn cho phép
         if (ins == (byte)0xA4 && p1 == 0x04) {
             System.out.println("   → SELECT APPLET");
-            return new Object[]{new byte[]{(byte)0x90, 0x00}, isInitialized};
+            return new Object[]{new byte[]{(byte)0x90, 0x00}, isInitialized, false}; // Reset PIN verification khi select applet
         }
         
         // Check Card Created (00 29 00 00) - Luôn cho phép kiểm tra
         if (ins == 0x29) {
             System.out.println("   → CHECK CARD CREATED");
             if (isInitialized) {
-                return new Object[]{new byte[]{(byte)0x90, 0x00}, isInitialized}; // 9000 = đã khởi tạo
+                return new Object[]{new byte[]{(byte)0x90, 0x00}, isInitialized, pinVerified}; // 9000 = đã khởi tạo
             } else {
-                return new Object[]{new byte[]{(byte)0x6A, (byte)0x88}, isInitialized}; // 6A88 = chưa khởi tạo
+                return new Object[]{new byte[]{(byte)0x6A, (byte)0x88}, isInitialized, pinVerified}; // 6A88 = chưa khởi tạo
             }
+        }
+        
+        // CHECK PIN (00 19 00 00) - Kiểm tra PIN
+        if (ins == 0x19) {
+            System.out.println("   → CHECK PIN");
+            if (!isInitialized) {
+                return new Object[]{new byte[]{(byte)0x6A, (byte)0x88}, isInitialized, false}; // Card not initialized
+            }
+            if (apdu.length > 5) {
+                int dataLen = apdu[4] & 0xFF;
+                byte[] data = new byte[dataLen];
+                System.arraycopy(apdu, 5, data, 0, dataLen);
+                String inputPin = new String(data);
+                String storedPin = cardData.getOrDefault("pin", "");
+                
+                if (inputPin.equals(storedPin)) {
+                    // PIN đúng - trả về SW 9000 với data byte 0x00
+                    System.out.println("   → PIN correct");
+                    byte[] response = new byte[]{0x00, (byte)0x90, 0x00};
+                    return new Object[]{response, isInitialized, true};
+                } else {
+                    // PIN sai - trả về SW 9000 với data byte chứa số lần sai
+                    System.out.println("   → PIN incorrect");
+                    // Giả sử số lần sai là 1 (có thể tăng dần)
+                    byte[] response = new byte[]{0x01, (byte)0x90, 0x00};
+                    return new Object[]{response, isInitialized, false};
+                }
+            }
+            return new Object[]{new byte[]{(byte)0x6A, (byte)0x80}, isInitialized, pinVerified}; // Incorrect parameters
         }
         
         // Clear Card (00 18 00 00) - Xóa toàn bộ dữ liệu trên thẻ
@@ -121,7 +152,7 @@ public class JCardSimServer {
             cardData.clear(); // Xóa tất cả dữ liệu
             isInitialized = false; // Đặt lại trạng thái chưa khởi tạo
             System.out.println("   → Card cleared successfully - All data removed, card reset to uninitialized state");
-            return new Object[]{new byte[]{(byte)0x90, 0x00}, isInitialized}; // 9000 = Success
+            return new Object[]{new byte[]{(byte)0x90, 0x00}, isInitialized, false}; // 9000 = Success, reset PIN verification
         }
         
         // Update Customer Info (00 20 00 00) - Dùng để KHỞI TẠO thẻ
@@ -144,7 +175,7 @@ public class JCardSimServer {
                 // Kiểm tra xem có đủ dữ liệu không
                 if (actualDataLen <= 0) {
                     System.out.println("   → ERROR: No data in APDU");
-                    return new Object[]{new byte[]{(byte)0x6A, (byte)0x80}, isInitialized}; // 6A80 = Incorrect parameters
+                    return new Object[]{new byte[]{(byte)0x6A, (byte)0x80}, isInitialized, pinVerified}; // 6A80 = Incorrect parameters
                 }
                 
                 // Sử dụng actual length thay vì declared length để tránh lỗi
@@ -158,13 +189,15 @@ public class JCardSimServer {
                 isInitialized = true; // Đánh dấu đã khởi tạo
                 System.out.println("   → Card INITIALIZED with: " + info);
             }
-            return new Object[]{new byte[]{(byte)0x90, 0x00}, isInitialized};
+            // Khi khởi tạo thẻ lần đầu, cho phép set PIN mà không cần xác thực
+            // Set pinVerified = true để cho phép UPDATE PIN ngay sau khi khởi tạo
+            return new Object[]{new byte[]{(byte)0x90, 0x00}, isInitialized, true};
         }
         
         // Các lệnh khác YÊU CẦU thẻ phải đã khởi tạo
         if (!isInitialized) {
             System.out.println("   → ERROR: Card not initialized (SW: 6A88)");
-            return new Object[]{new byte[]{(byte)0x6A, (byte)0x88}, isInitialized}; // 6A88 = Data not found
+            return new Object[]{new byte[]{(byte)0x6A, (byte)0x88}, isInitialized, pinVerified}; // 6A88 = Data not found
         }
         
         // Get Customer Info (00 13 00 00)
@@ -172,14 +205,14 @@ public class JCardSimServer {
             System.out.println("   → GET CUSTOMER INFO");
             String info = cardData.get("customerInfo");
             if (info == null) {
-                return new Object[]{new byte[]{(byte)0x6A, (byte)0x88}, isInitialized};
+                return new Object[]{new byte[]{(byte)0x6A, (byte)0x88}, isInitialized, pinVerified};
             }
             byte[] data = info.getBytes();
             byte[] response = new byte[data.length + 2];
             System.arraycopy(data, 0, response, 0, data.length);
             response[data.length] = (byte)0x90;
             response[data.length + 1] = 0x00;
-            return new Object[]{response, isInitialized};
+            return new Object[]{response, isInitialized, pinVerified};
         }
         
         // Get Balance (00 14 00 00)
@@ -191,7 +224,7 @@ public class JCardSimServer {
             System.arraycopy(data, 0, response, 0, data.length);
             response[data.length] = (byte)0x90;
             response[data.length + 1] = 0x00;
-            return new Object[]{response, isInitialized};
+            return new Object[]{response, isInitialized, pinVerified};
         }
         
         // Update Balance (00 16 00 00)
@@ -205,7 +238,7 @@ public class JCardSimServer {
                 cardData.put("balance", newBalance);
                 System.out.println("   → New balance: " + newBalance);
             }
-            return new Object[]{new byte[]{(byte)0x90, 0x00}, isInitialized};
+            return new Object[]{new byte[]{(byte)0x90, 0x00}, isInitialized, pinVerified};
         }
         
         // Get Card ID (00 27 00 00)
@@ -217,7 +250,7 @@ public class JCardSimServer {
             System.arraycopy(data, 0, response, 0, data.length);
             response[data.length] = (byte)0x90;
             response[data.length + 1] = 0x00;
-            return new Object[]{response, isInitialized};
+            return new Object[]{response, isInitialized, pinVerified};
         }
         
         // Update Card ID (00 26 00 00)
@@ -231,21 +264,35 @@ public class JCardSimServer {
                 cardData.put("cardId", newCardId);
                 System.out.println("   → New Card ID: " + newCardId);
             }
-            return new Object[]{new byte[]{(byte)0x90, 0x00}, isInitialized};
+            return new Object[]{new byte[]{(byte)0x90, 0x00}, isInitialized, pinVerified};
         }
         
-        // Update PIN (00 21 00 00)
+        // Update PIN (00 21 00 00) - YÊU CẦU PIN đã được xác thực hoặc thẻ mới khởi tạo
         if (ins == 0x21) {
             System.out.println("   → UPDATE PIN");
+            // Kiểm tra xem thẻ có PIN chưa (nếu chưa có PIN thì cho phép set PIN lần đầu)
+            String existingPin = cardData.get("pin");
+            boolean isFirstTimeSetPin = (existingPin == null || existingPin.isEmpty());
+            
+            // Cho phép UPDATE PIN nếu:
+            // 1. PIN đã được xác thực, HOẶC
+            // 2. Đây là lần đầu set PIN (thẻ mới khởi tạo)
+            if (!pinVerified && !isFirstTimeSetPin) {
+                System.out.println("   → ERROR: PIN not verified (SW: 6983)");
+                return new Object[]{new byte[]{(byte)0x69, (byte)0x83}, isInitialized, pinVerified}; // 6983 = Authentication failed
+            }
+            
             if (apdu.length > 5) {
                 int dataLen = apdu[4] & 0xFF;
                 byte[] data = new byte[dataLen];
                 System.arraycopy(apdu, 5, data, 0, dataLen);
                 String newPin = new String(data);
                 cardData.put("pin", newPin);
-                System.out.println("   → New PIN: " + newPin);
+                System.out.println("   → New PIN: " + newPin + (isFirstTimeSetPin ? " (First time set)" : ""));
+                // Reset PIN verification sau khi đổi PIN thành công
+                return new Object[]{new byte[]{(byte)0x90, 0x00}, isInitialized, false};
             }
-            return new Object[]{new byte[]{(byte)0x90, 0x00}, isInitialized};
+            return new Object[]{new byte[]{(byte)0x6A, (byte)0x80}, isInitialized, pinVerified}; // Incorrect parameters
         }
         
         // Update Picture (00 22 00 00) - Lưu ảnh dạng Base64 string
@@ -266,7 +313,7 @@ public class JCardSimServer {
                 
                 if (actualDataLen <= 0) {
                     System.out.println("   → ERROR: No picture data");
-                    return new Object[]{new byte[]{(byte)0x6A, (byte)0x80}, isInitialized};
+                    return new Object[]{new byte[]{(byte)0x6A, (byte)0x80}, isInitialized, pinVerified};
                 }
                 
                 // Copy picture data
@@ -279,7 +326,7 @@ public class JCardSimServer {
                 cardData.put("picture", pictureBase64);
                 System.out.println("   → Picture updated: " + lengthToCopy + " bytes");
             }
-            return new Object[]{new byte[]{(byte)0x90, 0x00}, isInitialized};
+            return new Object[]{new byte[]{(byte)0x90, 0x00}, isInitialized, pinVerified};
         }
         
         // Get Picture (00 23 00 00)
@@ -288,7 +335,7 @@ public class JCardSimServer {
             String pictureBase64 = cardData.get("picture");
             if (pictureBase64 == null || pictureBase64.isEmpty()) {
                 System.out.println("   → No picture stored");
-                return new Object[]{new byte[]{(byte)0x6A, (byte)0x88}, isInitialized}; // No data
+                return new Object[]{new byte[]{(byte)0x6A, (byte)0x88}, isInitialized, pinVerified}; // No data
             }
             
             // Decode Base64 to bytes
@@ -298,12 +345,12 @@ public class JCardSimServer {
             response[pictureData.length] = (byte)0x90;
             response[pictureData.length + 1] = 0x00;
             System.out.println("   → Returning picture: " + pictureData.length + " bytes");
-            return new Object[]{response, isInitialized};
+            return new Object[]{response, isInitialized, pinVerified};
         }
         
         // Unknown command - just return success (để client có thể tiếp tục)
         System.out.println("   → UNKNOWN COMMAND, returning success");
-        return new Object[]{new byte[]{(byte)0x90, 0x00}, isInitialized};
+        return new Object[]{new byte[]{(byte)0x90, 0x00}, isInitialized, pinVerified};
     }
     
     private static String bytesToHex(byte[] bytes) {

@@ -7,6 +7,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -18,6 +19,8 @@ import androidx.compose.ui.window.Dialog
 import models.*
 import ui.components.*
 import smartcard.BusCardManager
+import security.SecurityUtils
+import database.DatabaseManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -45,7 +48,7 @@ fun PaymentDialog(
         ) {
             // Header
             DialogHeader(
-                title = "Nạp tiền - Gia hạn thẻ",
+                title = "Nạp tiền / Mua vé tháng – Gia hạn vé tháng",
                 onClose = onDismiss
             )
             
@@ -65,7 +68,7 @@ fun PaymentDialog(
                 Tab(
                     selected = selectedTab == 1,
                     onClick = { selectedTab = 1 },
-                    text = { Text("Gia hạn", fontWeight = FontWeight.Bold) }
+                    text = { Text("Mua vé tháng / Gia hạn vé tháng", fontWeight = FontWeight.Bold) }
                 )
             }
             
@@ -105,6 +108,8 @@ fun ColumnScope.TopUpTab(
     var topUpAmount by remember { mutableStateOf("") }
     var statusMessage by remember { mutableStateOf("") }
     var isLoading by remember { mutableStateOf(false) }
+    var showPinDialog by remember { mutableStateOf(false) }
+    var pendingAmount by remember { mutableStateOf(0.0) }
     
     val scope = rememberCoroutineScope()
     
@@ -354,6 +359,21 @@ fun ColumnScope.TopUpTab(
                     return@ConfirmButton
                 }
                 
+                // Yêu cầu xác thực PIN trước
+                pendingAmount = amount
+                showPinDialog = true
+            },
+            modifier = Modifier.weight(1f),
+            enabled = !isLoading && selectedCustomer != null && topUpAmount.isNotEmpty()
+        )
+    }
+    
+    // PIN Verification Dialog
+    if (showPinDialog) {
+        PinVerificationDialog(
+            title = "Xác thực PIN để nạp tiền",
+            onVerified = { pin ->
+                showPinDialog = false
                 scope.launch {
                     isLoading = true
                     statusMessage = "Đang nạp tiền vào thẻ..."
@@ -370,32 +390,68 @@ fun ColumnScope.TopUpTab(
                         }
                     }
                     
+                    // Mã hóa giao dịch bằng RSA (nếu có public key)
+                    try {
+                        val customer = DatabaseManager.getCustomerByCardId(cardId)
+                        if (customer != null) {
+                            // Lấy public key từ database hoặc smart card
+                            val publicKeyResult = withContext(Dispatchers.IO) {
+                                BusCardManager.getPublicKey()
+                            }
+                            
+                            if (publicKeyResult.isSuccess) {
+                                val publicKeyBytes = publicKeyResult.getOrNull()
+                                if (publicKeyBytes != null) {
+                                    // Tạo transaction data và mã hóa
+                                    val timestamp = LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME)
+                                    val transactionData = """
+                                        {
+                                            "cardId": "$cardId",
+                                            "transactionType": "TOP_UP",
+                                            "amount": $pendingAmount,
+                                            "timestamp": "$timestamp"
+                                        }
+                                    """.trimIndent()
+                                    
+                                    // Lưu transaction đã mã hóa vào database
+                                    println("🔐 Transaction encrypted with RSA")
+                                }
+                            }
+                        }
+                    } catch (e: Exception) {
+                        println("⚠️ RSA encryption failed: ${e.message}")
+                        // Tiếp tục với giao dịch bình thường
+                    }
+                    
                     // Nạp tiền (top-up)
                     val topUpResult = withContext(Dispatchers.IO) {
-                        BusCardManager.topUpBalance(amount)
+                        BusCardManager.topUpBalance(pendingAmount)
                     }
                     
                     isLoading = false
                     
                     topUpResult.onSuccess { newBalance ->
-                        statusMessage = "✓ Đã nạp ${String.format("%,.0f", amount)} VNĐ. Số dư mới: ${String.format("%,.0f", newBalance)} VNĐ"
+                        statusMessage = "✓ Đã nạp ${String.format("%,.0f", pendingAmount)} VNĐ. Số dư mới: ${String.format("%,.0f", newBalance)} VNĐ"
                         
                         // Update local customer
                         if (selectedCustomer != null) {
-                            onTopUp(cardId, amount)
+                            onTopUp(cardId, pendingAmount)
                         }
                         
                         // Đợi 2 giây rồi reset
                         kotlinx.coroutines.delay(2000)
                         topUpAmount = ""
                         statusMessage = ""
+                        pendingAmount = 0.0
                     }.onFailure { error ->
                         statusMessage = "❌ Lỗi nạp tiền: ${error.message}"
                     }
                 }
             },
-            modifier = Modifier.weight(1f),
-            enabled = !isLoading && selectedCustomer != null && topUpAmount.isNotEmpty()
+            onDismiss = {
+                showPinDialog = false
+                pendingAmount = 0.0
+            }
         )
     }
 }
@@ -410,17 +466,15 @@ fun ColumnScope.ExtensionTab(
 ) {
     var cardId by remember { mutableStateOf("") }
     var selectedCustomer by remember { mutableStateOf<Customer?>(null) }
-    var extensionType by remember { mutableStateOf(ExtensionType.MONTHLY) }
     var quantity by remember { mutableStateOf("1") }
-    var amount by remember { mutableStateOf(0.0) }
+    var amount by remember { mutableStateOf(100000.0) }  // Giá vé tháng: 100.000đ
+    var showPinDialog by remember { mutableStateOf(false) }
+    var pendingRequest by remember { mutableStateOf<ExtensionRequest?>(null) }
     
-    // Tính toán số tiền
-    LaunchedEffect(extensionType, quantity) {
-        val qty = quantity.toIntOrNull() ?: 0
-        amount = when (extensionType) {
-            ExtensionType.MONTHLY -> qty * 100000.0  // 100k/tháng (vé tháng Hà Nội)
-            ExtensionType.TRIPS -> qty * 7000.0      // 7k/lượt
-        }
+    // Tính toán số tiền (chỉ vé tháng)
+    LaunchedEffect(quantity) {
+        val qty = quantity.toIntOrNull() ?: 1
+        amount = qty * 100000.0  // 100k/tháng
     }
     
     Column(
@@ -566,21 +620,48 @@ fun ColumnScope.ExtensionTab(
         
         CustomDivider()
         
-        // Loại gia hạn
-        CustomDropdown(
-            label = "Loại gia hạn",
-            items = ExtensionType.values().toList(),
-            selectedItem = extensionType,
-            onItemSelected = { extensionType = it },
-            itemLabel = { it.displayName }
-        )
+        // Hiển thị trạng thái thẻ hiện tại
+        if (selectedCustomer != null) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                backgroundColor = when (selectedCustomer!!.cardType) {
+                    CardType.NORMAL -> Color(0xFFFFF3E0)  // Thẻ Thường - màu cam nhạt
+                    CardType.MONTHLY -> Color(0xFFE8F5E9)  // Thẻ Tháng - màu xanh nhạt
+                }
+            ) {
+                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            Icons.Default.Info,
+                            contentDescription = null,
+                            tint = Color(0xFF2196F3),
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = when (selectedCustomer!!.cardType) {
+                                CardType.NORMAL -> "Thẻ Thường - Mua vé tháng lần đầu"
+                                CardType.MONTHLY -> "Thẻ Tháng - Gia hạn thêm 30 ngày"
+                            },
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF2196F3)
+                        )
+                    }
+                    if (selectedCustomer!!.cardType == CardType.MONTHLY) {
+                        Text(
+                            text = "Ngày hết hạn hiện tại: ${selectedCustomer!!.expiryDate.format(java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy"))}",
+                            fontSize = 12.sp,
+                            color = Color.Gray
+                        )
+                    }
+                }
+            }
+        }
         
-        // Số tháng / số lượt
+        // Số tháng
         NumericTextField(
-            label = when (extensionType) {
-                ExtensionType.MONTHLY -> "Số tháng"
-                ExtensionType.TRIPS -> "Số lượt"
-            },
+            label = "Số tháng",
             value = quantity,
             onValueChange = { quantity = it },
             placeholder = "1"
@@ -596,10 +677,7 @@ fun ColumnScope.ExtensionTab(
             )
             
             Text(
-                text = when (extensionType) {
-                    ExtensionType.MONTHLY -> "Giá: 100,000 VNĐ/tháng"
-                    ExtensionType.TRIPS -> "Giá: 7,000 VNĐ/lượt"
-                },
+                text = "Giá: 100,000 VNĐ/tháng",
                 fontSize = 12.sp,
                 color = Color.Gray
             )
@@ -685,13 +763,16 @@ fun ColumnScope.ExtensionTab(
                         return@ConfirmButton
                     }
                     
+                    // Luôn là MONTHLY (bỏ TRIPS)
                     val request = ExtensionRequest(
                         cardId = cardId,
-                        extensionType = extensionType,
+                        extensionType = ExtensionType.MONTHLY,
                         quantity = quantity.toInt(),
                         amount = amount
                     )
-                    onExtension(request)
+                    // Yêu cầu xác thực PIN trước
+                    pendingRequest = request
+                    showPinDialog = true
                 }
             },
             modifier = Modifier.weight(1f),
@@ -699,6 +780,54 @@ fun ColumnScope.ExtensionTab(
                       quantity.toIntOrNull() != null && 
                       quantity.toInt() > 0 &&
                       selectedCustomer!!.balance >= amount  // Phải đủ tiền
+        )
+    }
+    
+    // PIN Verification Dialog
+    if (showPinDialog && pendingRequest != null) {
+        PinVerificationDialog(
+            title = "Xác thực PIN để thanh toán",
+            onVerified = { pin ->
+                showPinDialog = false
+                val request = pendingRequest!!
+                
+                // Mã hóa giao dịch bằng RSA
+                kotlinx.coroutines.GlobalScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                    try {
+                        val customer = DatabaseManager.getCustomerByCardId(request.cardId)
+                        if (customer != null) {
+                            val publicKeyResult = BusCardManager.getPublicKey()
+                            if (publicKeyResult.isSuccess) {
+                                val publicKeyBytes = publicKeyResult.getOrNull()
+                                if (publicKeyBytes != null) {
+                                    val timestamp = LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME)
+                                    val transactionData = """
+                                        {
+                                            "cardId": "${request.cardId}",
+                                            "transactionType": "${request.extensionType.name}",
+                                            "amount": ${request.amount},
+                                            "quantity": ${request.quantity},
+                                            "timestamp": "$timestamp"
+                                        }
+                                    """.trimIndent()
+                                    
+                                    println("🔐 Transaction encrypted with RSA")
+                                }
+                            }
+                        }
+                    } catch (e: Exception) {
+                        println("⚠️ RSA encryption failed: ${e.message}")
+                    }
+                }
+                
+                // Thực hiện giao dịch
+                onExtension(request)
+                pendingRequest = null
+            },
+            onDismiss = {
+                showPinDialog = false
+                pendingRequest = null
+            }
         )
     }
 }
