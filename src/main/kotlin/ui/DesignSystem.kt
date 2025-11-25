@@ -12,9 +12,7 @@ import androidx.compose.ui.unit.sp
 object AppColors {
     // Primary Colors
     val Primary = Color(0xFF6366F1)           // Indigo-500
-    val PrimaryDark = Color(0xFF4F46E5)       // Indigo-600
-    val PrimaryLight = Color(0xFF818CF8)     // Indigo-400
-    
+
     // Primary Gradient
     val PrimaryGradientStart = Color(0xFF6366F1)  // Indigo-500
     val PrimaryGradientEnd = Color(0xFF8B5CF6)     // Purple-500
@@ -22,21 +20,15 @@ object AppColors {
     
     // Secondary Colors
     val Success = Color(0xFF10B981)            // Emerald-500
-    val SuccessLight = Color(0xFF34D399)      // Emerald-400
-    val Warning = Color(0xFFF59E0B)           // Amber-500
     val Error = Color(0xFFEF4444)             // Red-500
     val Info = Color(0xFF3B82F6)              // Blue-500
     
     // Neutral Colors
-    val Background = Color(0xFFF9FAFB)        // Gray-50
-    val BackgroundDark = Color(0xFFF3F4F6)   // Gray-100
     val Surface = Color(0xFFFFFFFF)           // White
-    val SurfaceElevated = Color(0xFFFAFAFA)    // Gray-50
-    
+
     val TextPrimary = Color(0xFF111827)       // Gray-900
     val TextSecondary = Color(0xFF6B7280)      // Gray-500
-    val TextDisabled = Color(0xFF9CA3AF)      // Gray-400
-    
+
     val Border = Color(0xFFE5E7EB)            // Gray-200
     val Divider = Color(0xFFE5E7EB)           // Gray-200
     

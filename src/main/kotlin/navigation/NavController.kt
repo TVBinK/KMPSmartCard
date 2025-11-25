@@ -35,15 +35,7 @@ class NavController(
             false
         }
     }
-    
-    /**
-     * Pop về root screen và clear back stack
-     */
-    fun popToRoot() {
-        backStack.clear()
-        _currentScreen.value = Screen.Home
-        onNavigate(Screen.Home)
-    }
+
     
     /**
      * Replace current screen (không thêm vào back stack)

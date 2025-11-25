@@ -3,10 +3,12 @@ package navigation
 import androidx.compose.runtime.*
 import models.Customer
 import models.ExtensionRequest
+import models.TapType
 import ui.dialogs.CustomerCardInfoDialog
 import ui.dialogs.DeleteConfirmDialog
 import ui.dialogs.EditCustomerDialog
 import ui.screens.*
+import ui.screens.loadcard.LoadCardInfoDialog
 
 /**
  * Navigation Host - Quản lý việc hiển thị các screen dựa trên current screen
@@ -15,11 +17,8 @@ import ui.screens.*
 fun NavigationHost(
     navController: NavController,
     customers: List<Customer>,
-    selectedCustomer: Customer?,
     onCustomerUpdated: () -> Unit,
     onCustomerDeleted: (Customer) -> Unit,
-    isCardConnected: Boolean,
-    isCardHasData: Boolean,
     onTopUpCompleted: (String, Double) -> Unit,
     onTapDetected: (String, TapType) -> Unit,
     onExtensionRequest: (ExtensionRequest) -> Unit
@@ -62,7 +61,6 @@ fun NavigationHost(
         is Screen.Route -> {
             RouteDialog(
                 onDismiss = { navController.navigateBack() },
-                customers = customers,
                 onRouteSelected = { _, _, _ -> navController.navigateBack() }
             )
         }

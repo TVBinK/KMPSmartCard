@@ -15,7 +15,7 @@ CREATE TABLE customer (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     card_id TEXT UNIQUE NOT NULL,                 -- Card ID (CARD-001, CARD-002, ...)
     full_name TEXT NOT NULL,                       -- Họ tên
-    customer_type TEXT NOT NULL,                   -- Loại đối tượng: HSSV, STUDENT, ELDERLY, NORMAL
+    customer_type TEXT NOT NULL,                   -- Loại đối tượng
     card_type TEXT NOT NULL,                       -- Loại thẻ: MONTHLY, SINGLE_TRIP
     balance REAL DEFAULT 0,                        -- Số dư tài khoản
     expiry_date TEXT NOT NULL,                     -- Ngày hết hạn thẻ (ISO format)

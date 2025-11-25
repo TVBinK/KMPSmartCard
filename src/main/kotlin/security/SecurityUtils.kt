@@ -25,7 +25,6 @@ object SecurityUtils {
     private const val GCM_IV_LENGTH = 12
     private const val GCM_TAG_LENGTH = 16
     private const val RSA_ALGORITHM = "RSA"
-    private const val RSA_TRANSFORMATION = "RSA/ECB/PKCS1Padding"
     private const val RSA_KEY_SIZE = 2048
     
     // ==================== AES ENCRYPTION (Từ PIN) ====================
@@ -69,26 +68,6 @@ object SecurityUtils {
     }
     
     /**
-     * Giải mã dữ liệu bằng AES với khóa từ PIN
-     * @return String đã giải mã
-     */
-    fun decryptWithPin(encryptedData: ByteArray, pin: String): String = try {
-        val secretKey = deriveKeyFromPin(pin)
-        val cipher = Cipher.getInstance(AES_TRANSFORMATION)
-        
-        // Tách IV và encrypted data
-        val iv = encryptedData.sliceArray(0 until GCM_IV_LENGTH)
-        val encrypted = encryptedData.sliceArray(GCM_IV_LENGTH until encryptedData.size)
-        
-        val parameterSpec = GCMParameterSpec(GCM_TAG_LENGTH * 8, iv)
-        cipher.init(Cipher.DECRYPT_MODE, secretKey, parameterSpec)
-        
-        String(cipher.doFinal(encrypted), UTF_8)
-    } catch (e: Exception) {
-        throw SecurityException("Lỗi giải mã dữ liệu: ${e.message}", e)
-    }
-    
-    /**
      * Mã hóa nhiều trường dữ liệu cùng lúc
      */
     fun encryptCustomerData(
@@ -100,13 +79,6 @@ object SecurityUtils {
         "address" to encryptWithPin(address, pin),
         "phone" to encryptWithPin(phone, pin)
     )
-    
-    /**
-     * Giải mã dữ liệu khách hàng
-     */
-    fun decryptCustomerData(
-        encryptedData: Map<String, ByteArray>, pin: String
-    ): Map<String, String> = encryptedData.mapValues { (_, value) -> decryptWithPin(value, pin) }
     
     // ==================== RSA ENCRYPTION (Cho giao dịch) ====================
     
@@ -120,28 +92,6 @@ object SecurityUtils {
     }
     
     /**
-     * Mã hóa dữ liệu bằng RSA public key
-     */
-    fun encryptWithRSA(data: String, publicKey: PublicKey): ByteArray = try {
-        Cipher.getInstance(RSA_TRANSFORMATION).apply {
-            init(Cipher.ENCRYPT_MODE, publicKey)
-        }.doFinal(data.toByteArray(UTF_8))
-    } catch (e: Exception) {
-        throw SecurityException("Lỗi mã hóa RSA: ${e.message}", e)
-    }
-    
-    /**
-     * Giải mã dữ liệu bằng RSA private key
-     */
-    fun decryptWithRSA(encryptedData: ByteArray, privateKey: PrivateKey): String = try {
-        String(Cipher.getInstance(RSA_TRANSFORMATION).apply {
-            init(Cipher.DECRYPT_MODE, privateKey)
-        }.doFinal(encryptedData), UTF_8)
-    } catch (e: Exception) {
-        throw SecurityException("Lỗi giải mã RSA: ${e.message}", e)
-    }
-    
-    /**
      * Chuyển PublicKey thành Base64 string
      */
     fun publicKeyToBase64(publicKey: PublicKey): String = 
@@ -152,95 +102,11 @@ object SecurityUtils {
      */
     fun privateKeyToBase64(privateKey: PrivateKey): String = 
         java.util.Base64.getEncoder().encodeToString(privateKey.encoded)
-    
-    /**
-     * Chuyển Base64 string thành PublicKey
-     */
-    fun base64ToPublicKey(base64Key: String): PublicKey = try {
-        val keyBytes = java.util.Base64.getDecoder().decode(base64Key)
-        KeyFactory.getInstance(RSA_ALGORITHM).generatePublic(X509EncodedKeySpec(keyBytes))
-    } catch (e: Exception) {
-        throw SecurityException("Lỗi chuyển đổi PublicKey: ${e.message}", e)
-    }
-    
-    /**
-     * Chuyển Base64 string thành PrivateKey
-     */
-    fun base64ToPrivateKey(base64Key: String): PrivateKey = try {
-        val keyBytes = java.util.Base64.getDecoder().decode(base64Key)
-        KeyFactory.getInstance(RSA_ALGORITHM).generatePrivate(PKCS8EncodedKeySpec(keyBytes))
-    } catch (e: Exception) {
-        throw SecurityException("Lỗi chuyển đổi PrivateKey: ${e.message}", e)
-    }
-    
-    /**
-     * Mã hóa thông tin giao dịch bằng RSA
-     * Tạo JSON string và mã hóa
-     */
-    fun encryptTransactionData(
-        cardId: String,
-        transactionType: String,
-        amount: Double,
-        timestamp: String,
-        publicKey: PublicKey
-    ): ByteArray {
-        val transactionJson = """
-            {
-                "cardId": "$cardId",
-                "transactionType": "$transactionType",
-                "amount": $amount,
-                "timestamp": "$timestamp"
-            }
-        """.trimIndent()
-        
-        return encryptWithRSA(transactionJson, publicKey)
-    }
-    
-    /**
-     * Tạo chữ ký số cho giao dịch (sử dụng private key)
-     */
-    fun signTransaction(
-        transactionData: String,
-        privateKey: PrivateKey
-    ): ByteArray {
-        return try {
-            val signature = Signature.getInstance("SHA256withRSA")
-            signature.initSign(privateKey)
-            signature.update(transactionData.toByteArray(UTF_8))
-            signature.sign()
-        } catch (e: Exception) {
-            throw SecurityException("Lỗi tạo chữ ký số: ${e.message}", e)
-        }
-    }
-    
-    /**
-     * Xác thực chữ ký số (sử dụng public key)
-     */
-    fun verifySignature(
-        transactionData: String,
-        signature: ByteArray,
-        publicKey: PublicKey
-    ): Boolean {
-        return try {
-            val sig = Signature.getInstance("SHA256withRSA")
-            sig.initVerify(publicKey)
-            sig.update(transactionData.toByteArray(UTF_8))
-            sig.verify(signature)
-        } catch (e: Exception) {
-            false
-        }
-    }
-    
+
     /**
      * Chuyển ByteArray thành Base64 string
      */
     fun bytesToBase64(bytes: ByteArray): String = 
         java.util.Base64.getEncoder().encodeToString(bytes)
-    
-    /**
-     * Chuyển Base64 string thành ByteArray
-     */
-    fun base64ToBytes(base64: String): ByteArray = 
-        java.util.Base64.getDecoder().decode(base64)
 }
 

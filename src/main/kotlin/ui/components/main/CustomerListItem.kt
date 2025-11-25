@@ -1,6 +1,7 @@
-package ui.components
+package ui.components.main
 
 import androidx.compose.animation.core.*
+import androidx.compose.desktop.ui.tooling.preview.Preview
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -34,6 +35,8 @@ import ui.AppColors
 import ui.AppRadius
 import ui.AppSpacing
 import ui.AppTypography
+import ui.components.AnimatedBalance
+import ui.components.ImagePlaceholder
 
 /**
  * Customer list item với animation
@@ -65,6 +68,7 @@ fun AnimatedCustomerListItem(
         )
     }
 }
+
 
 /**
  * Customer list item
@@ -250,3 +254,44 @@ fun CustomerListItem(
     }
 }
 
+@androidx.compose.desktop.ui.tooling.preview.Preview
+@Composable
+fun CustomerListItemPreview() {
+    androidx.compose.material.MaterialTheme(
+        colors = androidx.compose.material.lightColors(
+            primary = androidx.compose.ui.graphics.Color(0xFF6366F1),
+            primaryVariant = androidx.compose.ui.graphics.Color(0xFF4F46E5),
+            secondary = androidx.compose.ui.graphics.Color(0xFF10B981),
+            background = androidx.compose.ui.graphics.Color(0xFFF9FAFB)
+        )
+    ) {
+        val sampleCustomer = Customer(
+            id = "1",
+            fullName = "Nguyễn Văn A",
+            cccd = "012345678901",
+            dob = "01/01/2000",
+            address = "Hà Nội",
+            phone = "0987654321",
+            customerType = models.CustomerType.CUSTOMER,
+            cardType = models.CardType.MONTHLY,
+            expiryDate = java.time.LocalDate.now().plusMonths(6),
+            balance = 150000.0,
+            cardId = "CARD-001",
+            linkedCustomerCode = "SV001",
+            photoPath = null,
+            photoBytes = null
+        )
+
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(androidx.compose.ui.graphics.Color(0xFFF9FAFB))
+                .padding(16.dp)
+        ) {
+            CustomerListItem(
+                customer = sampleCustomer,
+                onClick = {}
+            )
+        }
+    }
+}

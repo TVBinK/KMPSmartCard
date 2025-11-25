@@ -26,7 +26,6 @@ import java.net.URI
 @Composable
 fun RouteDialog(
     onDismiss: () -> Unit,
-    customers: List<Customer>,
     onRouteSelected: (String, String, String) -> Unit  // routeName, startPoint, endPoint
 ) {
     var selectedRoute by remember { mutableStateOf<BusRoute?>(null) }
@@ -189,9 +188,7 @@ fun RouteDialog(
             }
             
             CustomDivider()
-            
-            // Footer
-            val scope = rememberCoroutineScope()
+
             Row(
                 modifier = Modifier
                     .fillMaxWidth()

@@ -844,54 +844,6 @@ fun GlassCard(
     }
 }
 
-/**
- * Badge Component với pill shape
- */
-@Composable
-fun Badge(
-    text: String,
-    modifier: Modifier = Modifier,
-    backgroundColor: Color = AppColors.Primary,
-    textColor: Color = Color.White
-) {
-    Surface(
-        modifier = modifier,
-        shape = RoundedCornerShape(AppRadius.full),
-        color = backgroundColor
-    ) {
-        Text(
-            text = text,
-            modifier = Modifier.padding(horizontal = AppSpacing.xs + 2.dp, vertical = AppSpacing.xs),
-            fontSize = AppTypography.captionSize,
-            fontWeight = FontWeight.Medium,
-            color = textColor
-        )
-    }
-}
-
-/**
- * Status Chip với colors theo context
- */
-@Composable
-fun StatusChip(
-    text: String,
-    status: StatusType,
-    modifier: Modifier = Modifier
-) {
-    val (bgColor, textColor) = when (status) {
-        StatusType.Success -> AppColors.Success to Color.White
-        StatusType.Warning -> AppColors.Warning to Color.White
-        StatusType.Error -> AppColors.Error to Color.White
-        StatusType.Info -> AppColors.Info to Color.White
-    }
-    
-    Badge(
-        text = text,
-        modifier = modifier,
-        backgroundColor = bgColor,
-        textColor = textColor
-    )
-}
 
 enum class StatusType {
     Success, Warning, Error, Info

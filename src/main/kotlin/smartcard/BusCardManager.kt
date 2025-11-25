@@ -44,13 +44,6 @@ object BusCardManager {
         }
     }
     
-    /**
-     * Ngắt kết nối với smart card
-     */
-    fun disconnect(): Result<Boolean> = executeSafe("Ngắt kết nối") {
-        Result.success(smartCard.disconnect())
-    }
-    
     // ========== THÔNG TIN KHÁCH HÀNG ==========
     
     /**
@@ -152,22 +145,6 @@ object BusCardManager {
         }
     }
     
-    /**
-     * Xác thực PIN đơn giản (không counter)
-     */
-    fun verifyPin(pin: String): Result<Boolean> {
-        return try {
-            val result = smartCard.verifyPin(pin)
-            if (result) {
-                Result.success(true)
-            } else {
-                Result.failure(Exception("PIN không đúng"))
-            }
-        } catch (e: Exception) {
-            Result.failure(Exception("Lỗi xác thực PIN: ${e.message}", e))
-        }
-    }
-    
     // ========== SỐ DƯ ==========
     
     /**
@@ -235,38 +212,6 @@ object BusCardManager {
     // ========== ẢNH ==========
     
     /**
-     * Lấy ảnh khách hàng
-     */
-    fun getPicture(): Result<BufferedImage> {
-        return try {
-            val image = smartCard.picture
-            if (image != null) {
-                Result.success(image)
-            } else {
-                Result.failure(Exception("Không thể đọc ảnh"))
-            }
-        } catch (e: Exception) {
-            Result.failure(Exception("Lỗi đọc ảnh: ${e.message}", e))
-        }
-    }
-    
-    /**
-     * Cập nhật ảnh khách hàng
-     */
-    fun updatePicture(image: BufferedImage): Result<Boolean> {
-        return try {
-            val result = smartCard.updatePicture(image)
-            if (result) {
-                Result.success(true)
-            } else {
-                Result.failure(Exception("Không thể cập nhật ảnh"))
-            }
-        } catch (e: Exception) {
-            Result.failure(Exception("Lỗi cập nhật ảnh: ${e.message}", e))
-        }
-    }
-    
-    /**
      * Cập nhật ảnh từ byte array
      * 
      * @param photoBytes Byte array của ảnh
@@ -290,27 +235,6 @@ object BusCardManager {
         }
     }
     
-    /**
-     * Đọc ảnh từ thẻ dạng byte array
-     * 
-     * @return Result<ByteArray?> - Byte array của ảnh hoặc null nếu không có
-     */
-    fun getPhotoBytes(): Result<ByteArray?> {
-        return try {
-            val picture = smartCard.picture
-            if (picture != null) {
-                // Convert BufferedImage to byte array
-                val baos = java.io.ByteArrayOutputStream()
-                javax.imageio.ImageIO.write(picture, "jpg", baos)
-                Result.success(baos.toByteArray())
-            } else {
-                Result.success(null)
-            }
-        } catch (e: Exception) {
-            Result.failure(Exception("Lỗi đọc ảnh từ thẻ: ${e.message}", e))
-        }
-    }
-    
     // ========== BẢO MẬT ==========
     
     /**
@@ -326,25 +250,6 @@ object BusCardManager {
             }
         } catch (e: Exception) {
             Result.failure(Exception("Lỗi đọc public key: ${e.message}", e))
-        }
-    }
-    
-    /**
-     * Xác thực thẻ bằng chữ ký số RSA
-     */
-    fun verifyCard(): Result<Boolean> {
-        return try {
-            val publicKey = getPublicKey().getOrElse { 
-                return Result.failure(Exception("Không thể lấy public key để xác thực"))
-            }
-            val result = smartCard.verifyCard(publicKey)
-            if (result) {
-                Result.success(true)
-            } else {
-                Result.failure(Exception("Thẻ không hợp lệ"))
-            }
-        } catch (e: Exception) {
-            Result.failure(Exception("Lỗi xác thực thẻ: ${e.message}", e))
         }
     }
     
@@ -406,78 +311,6 @@ object BusCardManager {
             println("Exception khi xoa the: ${e.message}")
             e.printStackTrace()
             Result.failure(Exception("Lỗi xóa thẻ: ${e.message}", e))
-        }
-    }
-    
-    /**
-     * Khóa thẻ
-     */
-    fun lockCard(): Result<Boolean> {
-        return try {
-            val result = smartCard.lockCard()
-            if (result) {
-                Result.success(true)
-            } else {
-                Result.failure(Exception("Không thể khóa thẻ"))
-            }
-        } catch (e: Exception) {
-            Result.failure(Exception("Lỗi khóa thẻ: ${e.message}", e))
-        }
-    }
-    
-    /**
-     * Mở khóa thẻ
-     */
-    fun unlockCard(): Result<Boolean> {
-        return try {
-            val result = smartCard.unlockCard()
-            if (result) {
-                Result.success(true)
-            } else {
-                Result.failure(Exception("Không thể mở khóa thẻ"))
-            }
-        } catch (e: Exception) {
-            Result.failure(Exception("Lỗi mở khóa thẻ: ${e.message}", e))
-        }
-    }
-    
-    // ========== QUẸT THẺ ==========
-    
-    /**
-     * Cập nhật thông tin quẹt thẻ gần nhất
-     */
-    fun updateLastTapInfo(routeId: String, tapType: String, timestamp: String): Result<Boolean> {
-        return try {
-            val result = smartCard.updateLastTapInfo(routeId, tapType, timestamp)
-            if (result) {
-                Result.success(true)
-            } else {
-                Result.failure(Exception("Không thể cập nhật thông tin quẹt thẻ"))
-            }
-        } catch (e: Exception) {
-            Result.failure(Exception("Lỗi cập nhật quẹt thẻ: ${e.message}", e))
-        }
-    }
-    
-    /**
-     * Lấy thông tin quẹt thẻ gần nhất
-     */
-    fun getLastTapInfo(): Result<TapInfo> {
-        return try {
-            val tapInfoArray = smartCard.lastTapInfo
-            if (tapInfoArray != null && tapInfoArray.size >= 3) {
-                Result.success(
-                    TapInfo(
-                        routeId = tapInfoArray[0],
-                        tapType = tapInfoArray[1],
-                        timestamp = tapInfoArray[2]
-                    )
-                )
-            } else {
-                Result.failure(Exception("Không có thông tin quẹt thẻ"))
-            }
-        } catch (e: Exception) {
-            Result.failure(Exception("Lỗi đọc thông tin quẹt thẻ: ${e.message}", e))
         }
     }
 }

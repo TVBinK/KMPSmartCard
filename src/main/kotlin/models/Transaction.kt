@@ -1,33 +1,5 @@
 package models
 
-import java.time.LocalDateTime
-
-/**
- * Loại giao dịch
- */
-enum class TransactionType(val displayName: String) {
-    TOP_UP("Nạp tiền"),
-    EXTENSION_MONTHLY("Mua vé tháng / Gia hạn tháng"),
-    REFUND("Hoàn tiền"),
-    TAP("Quẹt thẻ"),
-    ROUTE_HISTORY("Lộ trình")
-}
-
-/**
- * Model giao dịch
- */
-data class Transaction(
-    val id: String = "",
-    val cardId: String = "",
-    val type: TransactionType,
-    val amount: Double,
-    val balanceBefore: Double,
-    val balanceAfter: Double,
-    val description: String = "",
-    val timestamp: LocalDateTime = LocalDateTime.now(),
-    val tripId: String? = null
-)
-
 /**
  * Model yêu cầu gia hạn
  */
