@@ -41,6 +41,7 @@ fun RealTimeTapDialog(
     var lastTapTime by remember { mutableStateOf<LocalDateTime?>(null) }
     var currentCardId by remember { mutableStateOf<String?>(null) }
     var detectedCustomer by remember { mutableStateOf<models.Customer?>(null) }
+    var cardHandled by remember { mutableStateOf(false) }
     
     // Polling để phát hiện thẻ
     LaunchedEffect(isListening) {
@@ -49,8 +50,25 @@ fun RealTimeTapDialog(
                 try {
                     // Kiểm tra kết nối
                     if (!smartcard.BusCardManager.isConnected) {
-                        statusMessage = "⚠️ Chưa kết nối với Simulator"
+                        statusMessage = "⚠️ Chưa kết nối với Java Card"
                         delay(1000)
+                        continue
+                    }
+
+                    val cardPresent = smartcard.BusCardManager.isCardPresent
+                    if (!cardPresent) {
+                        if (currentCardId != null) {
+                            statusMessage = "Đang chờ quẹt thẻ..."
+                        }
+                        currentCardId = null
+                        detectedCustomer = null
+                        cardHandled = false
+                        delay(300)
+                        continue
+                    }
+                    
+                    if (cardHandled) {
+                        delay(300)
                         continue
                     }
                     
@@ -64,6 +82,7 @@ fun RealTimeTapDialog(
                             // Phát hiện thẻ mới!
                             currentCardId = cardId
                             lastTapTime = LocalDateTime.now()
+                            cardHandled = true
                             
                             // Load thông tin khách hàng
                             val customer = withContext(Dispatchers.IO) {
@@ -85,10 +104,12 @@ fun RealTimeTapDialog(
                         } else if (cardId.isEmpty()) {
                             currentCardId = null
                             detectedCustomer = null
+                            cardHandled = false
                         }
                     }.onFailure {
                         statusMessage = "Chờ quẹt thẻ..."
                         detectedCustomer = null
+                        cardHandled = false
                     }
                     
                 } catch (e: Exception) {
@@ -254,7 +275,7 @@ fun RealTimeTapDialog(
                         }
                         
                         Text(
-                            "1. Đảm bảo đã kết nối Simulator (cổng 9025)",
+                            "1. Đảm bảo đã kết nối Java Card (JCIDE Simulator hoặc card thật)",
                             fontSize = 12.sp,
                             color = Color(0xFF424242)
                         )
@@ -272,7 +293,7 @@ fun RealTimeTapDialog(
                         Spacer(Modifier.height(4.dp))
                         
                         Text(
-                            "💡 Lưu ý: Simulator chỉ lưu 1 thẻ tại 1 thời điểm. Mỗi lần nạp thông tin mới sẽ thay thế thẻ cũ.",
+                            "💡 Lưu ý: JCIDE Simulator chỉ lưu 1 thẻ tại 1 thời điểm. Mỗi lần nạp thông tin mới sẽ thay thế thẻ cũ.",
                             fontSize = 11.sp,
                             color = Color(0xFF666666),
                             fontStyle = androidx.compose.ui.text.font.FontStyle.Italic

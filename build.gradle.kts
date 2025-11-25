@@ -20,6 +20,15 @@ kotlin {
     jvmToolchain(21)
 }
 
+// Loại bỏ Java Card applet khỏi Gradle build (chỉ compile bằng JCIDE)
+sourceSets {
+    main {
+        java {
+            exclude("**/applet/**")
+        }
+    }
+}
+
 repositories {
     mavenCentral()
     maven("https://maven.pkg.jetbrains.space/public/p/compose/dev")
@@ -43,8 +52,6 @@ dependencies {
     // Optional: JSON processing (nếu cần)
     implementation("com.google.code.gson:gson:2.10.1")
     
-    // jCardSim - simulator library
-    implementation("com.licel:jcardsim:2.2.2")
     
     // SQLite JDBC Driver
     implementation("org.xerial:sqlite-jdbc:3.45.0.0")
@@ -80,13 +87,3 @@ compose.desktop {
     }
 }
 
-// Task để chạy simulator server
-tasks.register<JavaExec>("runSimulator") {
-    description = "Chạy jCardSim simulator server trên port 9025"
-    group = "application"
-    
-    classpath = sourceSets["main"].runtimeClasspath
-    mainClass.set("com.buscardmanagement.simulator.JCardSimServer")
-    
-    standardInput = System.`in`
-}

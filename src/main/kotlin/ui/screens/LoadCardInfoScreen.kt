@@ -73,8 +73,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import database.DatabaseManager
@@ -88,6 +90,8 @@ import models.CustomerType
 import smartcard.BusCardManager
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
+
+private const val MAX_PHOTO_SIZE_BYTES = 32767
 
 enum class LoadStep {
     CONNECT,
@@ -115,7 +119,7 @@ fun LoadCardInfoDialog(
     var cardId by remember { mutableStateOf("") }
     var fullName by remember { mutableStateOf("") }
     var cccd by remember { mutableStateOf("") }
-    var dob by remember { mutableStateOf("") }
+    var dob by remember { mutableStateOf(TextFieldValue("")) }
     var address by remember { mutableStateOf("") }
     var phone by remember { mutableStateOf("") }
     var customerType by remember { mutableStateOf(CustomerType.NORMAL) }
@@ -126,6 +130,7 @@ fun LoadCardInfoDialog(
     var pinVisible by remember { mutableStateOf(false) }
     var linkedCustomerCode by remember { mutableStateOf("") }
     var photoBytes by remember { mutableStateOf<ByteArray?>(null) }
+    val isPhotoTooLarge = (photoBytes?.size ?: 0) > MAX_PHOTO_SIZE_BYTES
 
     val scope = rememberCoroutineScope()
 
@@ -276,14 +281,14 @@ fun LoadCardInfoDialog(
                                 scope.launch {
                                     isLoading = true
                                     statusMessage = "Đang xóa dữ liệu thẻ..."
-                                    println("🗑️ Bắt đầu xóa dữ liệu thẻ...")
+                                    println("Bat dau xoa du lieu the...")
                                     
                                     val result = withContext(Dispatchers.IO) { BusCardManager.clearCard() }
                                     
-                                    println("🗑️ Kết quả xóa: ${if (result.isSuccess) "Thành công" else "Thất bại - ${result.exceptionOrNull()?.message}"}")
+                                    println("Ket qua xoa: ${if (result.isSuccess) "Thanh cong" else "That bai - ${result.exceptionOrNull()?.message}"}")
                                     
                                     result.onSuccess {
-                                        println("✅ Xóa thẻ thành công, đóng dialog")
+                                        println("Xoa the thanh cong, dong dialog")
                                         statusMessage = "✓ Đã xóa dữ liệu thẻ"
                                         isLoading = false
                                         delay(500) // Delay ngắn để user thấy thông báo thành công
@@ -291,7 +296,7 @@ fun LoadCardInfoDialog(
                                     }.onFailure { error ->
                                         isLoading = false
                                         statusMessage = "✗ ${error.message}"
-                                        println("❌ Lỗi xóa thẻ: ${error.message}")
+                                        println("Loi xoa the: ${error.message}")
                                     }
                                 }
                             },
@@ -307,19 +312,19 @@ fun LoadCardInfoDialog(
                             },
                             selectedExistingCustomer = selectedExistingCustomer,
                             onSelectExistingCustomer = { customer ->
-                                println("🔵 [LoadCardInfo] Chọn khách hàng có sẵn:")
+                                println("[LoadCardInfo] Chon khach hang co san:")
                                 println("   - Card ID: ${customer.cardId}")
-                                println("   - Họ tên: ${customer.fullName}")
+                                println("   - Ho ten: ${customer.fullName}")
                                 println("   - CCCD: ${customer.cccd}")
-                                println("   - Ngày sinh: ${customer.dob}")
-                                println("   - Địa chỉ: ${customer.address}")
-                                println("   - Số điện thoại: ${customer.phone}")
-                                println("   - Loại đối tượng: ${customer.customerType}")
-                                println("   - Loại thẻ: ${customer.cardType}")
-                                println("   - Ngày hết hạn: ${customer.expiryDate}")
-                                println("   - Số dư: ${customer.balance}")
-                                println("   - Mã liên kết: ${customer.linkedCustomerCode}")
-                                println("   - Có ảnh: ${customer.photoBytes != null}")
+                                println("   - Ngay sinh: ${customer.dob}")
+                                println("   - Dia chi: ${customer.address}")
+                                println("   - So dien thoai: ${customer.phone}")
+                                println("   - Loai doi tuong: ${customer.customerType}")
+                                println("   - Loai the: ${customer.cardType}")
+                                println("   - Ngay het han: ${customer.expiryDate}")
+                                println("   - So du: ${customer.balance}")
+                                println("   - Ma lien ket: ${customer.linkedCustomerCode}")
+                                println("   - Co anh: ${customer.photoBytes != null}")
                                 selectedExistingCustomer = customer
                                 // Điền đầy đủ tất cả thông tin từ khách hàng đã chọn bằng cách gọi callbacks
                                 // Sử dụng các callback để cập nhật state đúng cách
@@ -330,8 +335,8 @@ fun LoadCardInfoDialog(
                             onFullNameChange = { fullName = it },
                             cccd = cccd,
                             onCccdChange = { cccd = it },
-                            dob = dob,
-                            onDobChange = { dob = it },
+                            dob = dob.text,
+                            onDobChange = { dob = TextFieldValue(it) },
                             address = address,
                             onAddressChange = { address = it },
                             phone = phone,
@@ -346,12 +351,19 @@ fun LoadCardInfoDialog(
                             onPinChange = { pin = it },
                             photoBytes = photoBytes,
                             onPhotoChange = { photoBytes = it },
+                            photoSizeLimitBytes = MAX_PHOTO_SIZE_BYTES,
                             onNext = {
-                                if (validateInput(cardId, fullName, cccd, dob, phone, pin)) {
+                                when {
+                                    isPhotoTooLarge -> {
+                                        statusMessage = "⚠ Ảnh vượt quá 32KB. Vui lòng chọn ảnh nhỏ hơn"
+                                    }
+                                    validateInput(cardId, fullName, cccd, dob.text, phone, pin) -> {
                                     currentStep = LoadStep.WRITE_DATA
                                     statusMessage = "Sẵn sàng ghi dữ liệu lên thẻ"
-                                } else {
+                                    }
+                                    else -> {
                                     statusMessage = "⚠ Vui lòng điền đầy đủ thông tin bắt buộc"
+                                }
                                 }
                             }
                         )
@@ -360,12 +372,15 @@ fun LoadCardInfoDialog(
                             cardId = cardId,
                             fullName = fullName,
                             cccd = cccd,
-                            dob = dob,
+                            dob = dob.text,
                             address = address,
                             phone = phone,
                             customerType = customerType,
                             cardType = cardType,
                             balance = balance,
+                            photoSizeBytes = photoBytes?.size ?: 0,
+                            photoSizeLimitBytes = MAX_PHOTO_SIZE_BYTES,
+                            isPhotoTooLarge = isPhotoTooLarge,
                             onWrite = {
                                 scope.launch {
                                     isLoading = true
@@ -390,7 +405,7 @@ fun LoadCardInfoDialog(
                                             cardId = cardId,
                                             fullName = fullName,
                                             cccd = cccd,
-                                            dob = dob,
+                                            dob = dob.text,
                                             address = address,
                                             phone = phone,
                                             customerType = customerType,
@@ -434,8 +449,8 @@ fun LoadCardInfoDialog(
                                         }
 
                                         isLoading = false
-                                        delay(1200)
                                         onSuccess(newCustomer)
+                                        onDismiss()
                                     } else {
                                         isLoading = false
                                         statusMessage = "✗ Ghi dữ liệu thất bại"
@@ -513,7 +528,7 @@ private fun ConnectStepContent(
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         Text(
-            text = "Bước 1: Kết nối Simulator",
+            text = "Bước 1: Kết nối Java Card",
             fontSize = 16.sp,
             fontWeight = FontWeight.Bold,
             color = Color(0xFF2196F3)
@@ -540,7 +555,7 @@ private fun ConnectStepContent(
                     
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = "Simulator Card Reader",
+                            text = "Java Card Reader",
                             fontSize = 12.sp,
                             color = Color.Gray
                         )
@@ -580,7 +595,7 @@ private fun ConnectStepContent(
                 } else {
                     Icon(Icons.Default.Add, contentDescription = null, tint = Color.White)
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("Kết nối Simulator", color = Color.White, fontSize = 14.sp)
+                    Text("Kết nối Java Card", color = Color.White, fontSize = 14.sp)
                 }
             }
         } else {
@@ -660,17 +675,22 @@ private fun ConnectStepContent(
                 Spacer(modifier = Modifier.height(8.dp))
                 
                 Text(
-                    "1. Chạy JCardSimServer (cổng 9025)",
+                    "1. Mở JCIDE Simulator",
                     fontSize = 12.sp,
                     color = Color(0xFF424242)
                 )
                 Text(
-                    "2. Nhấn 'Kết nối Simulator'",
+                    "2. Load và install applet lên simulator",
                     fontSize = 12.sp,
                     color = Color(0xFF424242)
                 )
                 Text(
-                    "3. Sau khi kết nối thành công, nhấn 'Tiếp tục'",
+                    "3. Nhấn 'Kết nối Java Card'",
+                    fontSize = 12.sp,
+                    color = Color(0xFF424242)
+                )
+                Text(
+                    "4. Sau khi kết nối thành công, nhấn 'Tiếp tục'",
                     fontSize = 12.sp,
                     color = Color(0xFF424242)
                 )
@@ -678,7 +698,7 @@ private fun ConnectStepContent(
                 Spacer(modifier = Modifier.height(8.dp))
                 
                 Text(
-                    "💡 Lưu ý: Simulator phải đang chạy trước khi kết nối",
+                    "💡 Lưu ý: JCIDE Simulator phải đang chạy và applet đã được cài đặt",
                     fontSize = 11.sp,
                     color = Color(0xFF666666),
                     fontStyle = FontStyle.Italic
@@ -775,7 +795,7 @@ private fun CheckCardStepContent(
                     // Nút Xóa dữ liệu thẻ - Chỉ hiển thị khi thẻ có dữ liệu
                     Button(
                         onClick = {
-                            println("👆 User nhấn nút 'Xóa dữ liệu thẻ'")
+                            println("User nhan nut 'Xoa du lieu the'")
                             onClearCard()
                         },
                         modifier = Modifier
@@ -846,57 +866,77 @@ private fun InputInfoStepContent(
     onPinChange: (String) -> Unit,
     photoBytes: ByteArray?,
     onPhotoChange: (ByteArray?) -> Unit,
+    photoSizeLimitBytes: Int,
     onNext: () -> Unit
 ) {
     var pinVisible by remember { mutableStateOf(false) }
     val dateFormatter = remember { DateTimeFormatter.ofPattern("dd/MM/yyyy") }
+    val photoSizeBytes = photoBytes?.size ?: 0
+    val sizeLimitKb = photoSizeLimitBytes / 1024.0
+    val currentSizeKb = photoSizeBytes / 1024.0
+    val photoSizeText = if (photoBytes != null) {
+        String.format("Kích thước ảnh: %.1f KB / %.1f KB", currentSizeKb, sizeLimitKb)
+    } else {
+        String.format("Giới hạn kích thước ảnh: ≤ %.1f KB", sizeLimitKb)
+    }
+    val isPhotoTooLarge = photoBytes != null && photoSizeBytes > photoSizeLimitBytes
+    val photoSizeColor = if (isPhotoTooLarge) Color(0xFFD32F2F) else Color.Gray
+    
+    // Local state cho TextFieldValue để quản lý cursor
+    var dobTextFieldValue by remember { mutableStateOf(TextFieldValue(dob)) }
+    
+    // Đồng bộ dobTextFieldValue khi dob thay đổi từ bên ngoài
+    LaunchedEffect(dob) {
+        if (dobTextFieldValue.text != dob) {
+            dobTextFieldValue = TextFieldValue(dob, TextRange(dob.length))
+        }
+    }
     
     // Tự động điền thông tin khi chọn khách hàng có sẵn
     LaunchedEffect(selectedExistingCustomer) {
         selectedExistingCustomer?.let { customer ->
-            println("🟢 [LoadCardInfo] LaunchedEffect: Bắt đầu điền thông tin từ khách hàng đã chọn")
-            println("   - Họ tên: '${customer.fullName}' (rỗng: ${customer.fullName.isBlank()})")
-            println("   - CCCD: '${customer.cccd}' (rỗng: ${customer.cccd.isBlank()})")
-            println("   - Ngày sinh: '${customer.dob}' (rỗng: ${customer.dob.isBlank()})")
-            println("   - Địa chỉ: '${customer.address}' (rỗng: ${customer.address.isBlank()})")
-            println("   - Số điện thoại: '${customer.phone}' (rỗng: ${customer.phone.isBlank()})")
-            println("   - Loại thẻ: ${customer.cardType}")
-            println("   - Ngày hết hạn: ${customer.expiryDate}")
-            println("   - Số dư: ${customer.balance}")
-            println("   - Có ảnh: ${customer.photoBytes != null}")
+            println("[LoadCardInfo] LaunchedEffect: Bat dau dien thong tin tu khach hang da chon")
+            println("   - Ho ten: '${customer.fullName}' (rong: ${customer.fullName.isBlank()})")
+            println("   - CCCD: '${customer.cccd}' (rong: ${customer.cccd.isBlank()})")
+            println("   - Ngay sinh: '${customer.dob}' (rong: ${customer.dob.isBlank()})")
+            println("   - Dia chi: '${customer.address}' (rong: ${customer.address.isBlank()})")
+            println("   - So dien thoai: '${customer.phone}' (rong: ${customer.phone.isBlank()})")
+            println("   - Loai the: ${customer.cardType}")
+            println("   - Ngay het han: ${customer.expiryDate}")
+            println("   - So du: ${customer.balance}")
+            println("   - Co anh: ${customer.photoBytes != null}")
             
-            // Điền đầy đủ tất cả thông tin từ khách hàng đã chọn
-            println("   → Gọi onFullNameChange('${customer.fullName}')")
+            println("   -> Goi onFullNameChange('${customer.fullName}')")
             onFullNameChange(customer.fullName)
             
-            println("   → Gọi onCccdChange('${customer.cccd}')")
+            println("   -> Goi onCccdChange('${customer.cccd}')")
             onCccdChange(customer.cccd)
             
-            println("   → Gọi onDobChange('${customer.dob}')")
+            println("   -> Goi onDobChange('${customer.dob}')")
             onDobChange(customer.dob)
             
-            println("   → Gọi onAddressChange('${customer.address}')")
+            println("   -> Goi onAddressChange('${customer.address}')")
             onAddressChange(customer.address)
             
-            println("   → Gọi onPhoneChange('${customer.phone}')")
+            println("   -> Goi onPhoneChange('${customer.phone}')")
             onPhoneChange(customer.phone)
             
-            println("   → Gọi onCardTypeChange(${customer.cardType})")
+            println("   -> Goi onCardTypeChange(${customer.cardType})")
             onCardTypeChange(customer.cardType)
             
-            println("   → Gọi onExpiryDateChange(${customer.expiryDate})")
+            println("   -> Goi onExpiryDateChange(${customer.expiryDate})")
             onExpiryDateChange(customer.expiryDate)
             
-            println("   → Gọi onBalanceChange('${customer.balance.toInt().toString()}')")
+            println("   -> Goi onBalanceChange('${customer.balance.toInt().toString()}')")
             onBalanceChange(customer.balance.toInt().toString())
             
-            println("   → Gọi onPhotoChange(${if (customer.photoBytes != null) "có ảnh" else "null"})")
+            println("   -> Goi onPhotoChange(${if (customer.photoBytes != null) "co anh" else "null"})")
             onPhotoChange(customer.photoBytes)
             
-            println("✅ [LoadCardInfo] LaunchedEffect: Đã gọi tất cả callbacks để điền thông tin")
+            println("[LoadCardInfo] LaunchedEffect: Da goi tat ca callbacks de dien thong tin")
             // Card ID và PIN để trống để user nhập mới cho thẻ này
         } ?: run {
-            println("🟡 [LoadCardInfo] LaunchedEffect: selectedExistingCustomer = null, không điền thông tin")
+            println("[LoadCardInfo] LaunchedEffect: selectedExistingCustomer = null, khong dien thong tin")
         }
     }
     
@@ -1178,10 +1218,13 @@ private fun InputInfoStepContent(
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 OutlinedTextField(
-                    value = dob,
+                    value = dobTextFieldValue,
                     onValueChange = { value ->
                         // Format tự động: dd/MM/yyyy
-                        val formatted = ui.components.formatDateOfBirth(value)
+                        val formatted = ui.components.formatDateOfBirth(value.text)
+                        // Đặt con trỏ về cuối sau khi format
+                        val cursorPosition = formatted.length
+                        dobTextFieldValue = TextFieldValue(formatted, TextRange(cursorPosition))
                         onDobChange(formatted)
                     },
                     label = { Text("Ngày sinh (dd/MM/yyyy) *") },
@@ -1341,7 +1384,7 @@ private fun InputInfoStepContent(
                         }
                         
                         if (imageBitmap != null) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                 Image(
                                     bitmap = imageBitmap,
                                     contentDescription = "Photo",
@@ -1350,18 +1393,17 @@ private fun InputInfoStepContent(
                                         .border(2.dp, Color(0xFF4CAF50), RoundedCornerShape(8.dp)),
                                     contentScale = ContentScale.Crop
                                 )
-                                Spacer(modifier = Modifier.width(12.dp))
-                                Column {
+                                Text(
+                                    text = photoSizeText,
+                                    fontSize = 12.sp,
+                                    color = photoSizeColor,
+                                    fontWeight = FontWeight.Medium
+                                )
+                                if (isPhotoTooLarge) {
                                     Text(
-                                        "✅ Đã chọn ảnh",
-                                        fontSize = 13.sp,
-                                        color = Color(0xFF4CAF50),
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                    Text(
-                                        "${photoBytes.size / 1024} KB",
-                                        fontSize = 11.sp,
-                                        color = Color.Gray
+                                        text = "Ảnh vượt quá giới hạn, vui lòng chọn ảnh khác.",
+                                        fontSize = 12.sp,
+                                        color = Color(0xFFD32F2F)
                                     )
                                 }
                             }
@@ -1382,11 +1424,19 @@ private fun InputInfoStepContent(
                                 )
                             }
                             Spacer(modifier = Modifier.width(12.dp))
-                            Text(
-                                "Chưa chọn ảnh",
-                                fontSize = 13.sp,
-                                color = Color.Gray
-                            )
+                            Column {
+                                Text(
+                                    "Chưa chọn ảnh",
+                                    fontSize = 13.sp,
+                                    color = Color.Gray
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = photoSizeText,
+                                    fontSize = 12.sp,
+                                    color = Color.Gray
+                                )
+                            }
                         }
                     }
 
@@ -1402,45 +1452,15 @@ private fun InputInfoStepContent(
                                 if (result == JFileChooser.APPROVE_OPTION) {
                                     val file = fileChooser.selectedFile
                                     try {
-                                        val image = ImageIO.read(file)
-                                        // Resize image to max 200x200 for better quality (protocol supports up to 65KB)
-                                        val targetSize = 200
-                                        val resized = java.awt.image.BufferedImage(targetSize, targetSize, java.awt.image.BufferedImage.TYPE_INT_RGB)
-                                        val graphics = resized.createGraphics()
-                                        graphics.setRenderingHint(
-                                            java.awt.RenderingHints.KEY_INTERPOLATION,
-                                            java.awt.RenderingHints.VALUE_INTERPOLATION_BILINEAR
-                                        )
-                                        graphics.setRenderingHint(
-                                            java.awt.RenderingHints.KEY_RENDERING,
-                                            java.awt.RenderingHints.VALUE_RENDER_QUALITY
-                                        )
-                                        graphics.setRenderingHint(
-                                            java.awt.RenderingHints.KEY_ANTIALIASING,
-                                            java.awt.RenderingHints.VALUE_ANTIALIAS_ON
-                                        )
-                                        graphics.drawImage(image, 0, 0, targetSize, targetSize, null)
-                                        graphics.dispose()
+                                    val image = ImageIO.read(file)
+                                    // Không resize nữa, chỉ nén JPEG để giữ kích thước hợp lý
+                                    val baos = ByteArrayOutputStream()
+                                    ImageIO.write(image, "jpg", baos)
+                                    val bytes = baos.toByteArray()
+                                    println("Anh JPEG goc: ${bytes.size} bytes (${image.width}x${image.height})")
                                         
-                                        val baos = ByteArrayOutputStream()
-                                        // Use good quality JPG (75%)
-                                        val writer = ImageIO.getImageWritersByFormatName("jpg").next()
-                                        val param = writer.defaultWriteParam
-                                        param.compressionMode = javax.imageio.ImageWriteParam.MODE_EXPLICIT
-                                        param.compressionQuality = 0.75f // 75% quality (better than before)
-                                        
-                                        val ios = javax.imageio.stream.MemoryCacheImageOutputStream(baos)
-                                        writer.output = ios
-                                        writer.write(null, javax.imageio.IIOImage(resized, null, null), param)
-                                        ios.close()
-                                        writer.dispose()
-                                        
-                                        val bytes = baos.toByteArray()
-                                        println("📸 Ảnh đã resize: ${bytes.size} bytes (${targetSize}x${targetSize}, quality 75%)")
-                                        
-                                        // Cảnh báo nếu ảnh quá lớn (> 50KB có thể chậm)
                                         if (bytes.size > 51200) {
-                                            println("⚠️ Cảnh báo: Ảnh có kích thước ${bytes.size} bytes (> 50KB), có thể chậm khi ghi vào thẻ")
+                                            println("Canh bao: Anh co kich thuoc ${bytes.size} bytes (> 50KB), co the cham khi ghi vao the")
                                         }
                                         
                                         onPhotoChange(bytes)
@@ -1496,8 +1516,20 @@ private fun WriteDataStepContent(
     customerType: CustomerType,
     cardType: CardType,
     balance: String,
+    photoSizeBytes: Int,
+    photoSizeLimitBytes: Int,
+    isPhotoTooLarge: Boolean,
     onWrite: () -> Unit
 ) {
+    val sizeLimitKb = photoSizeLimitBytes / 1024.0
+    val currentSizeKb = photoSizeBytes / 1024.0
+    val photoInfoText = if (photoSizeBytes > 0) {
+        String.format("Ảnh đính kèm: %.1f KB / %.1f KB", currentSizeKb, sizeLimitKb)
+    } else {
+        String.format("Chưa đính kèm ảnh (giới hạn ≤ %.1f KB)", sizeLimitKb)
+    }
+    val photoInfoColor = if (isPhotoTooLarge) Color(0xFFD32F2F) else Color.Gray
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -1528,6 +1560,13 @@ private fun WriteDataStepContent(
             }
         }
 
+        Text(
+            text = photoInfoText,
+            fontSize = 13.sp,
+            color = photoInfoColor,
+            fontWeight = FontWeight.Medium
+        )
+
         Card(backgroundColor = Color(0xFFFFF3E0)) {
             Column(modifier = Modifier.padding(16.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1546,6 +1585,7 @@ private fun WriteDataStepContent(
 
         Button(
             onClick = onWrite,
+            enabled = !isPhotoTooLarge,
             modifier = Modifier
                 .fillMaxWidth()
                 .height(54.dp),
@@ -1554,6 +1594,14 @@ private fun WriteDataStepContent(
             Icon(Icons.Default.Check, contentDescription = null, tint = Color.White)
             Spacer(modifier = Modifier.width(8.dp))
             Text("Ghi dữ liệu lên thẻ", color = Color.White)
+        }
+
+        if (isPhotoTooLarge) {
+            Text(
+                text = "Ảnh vượt quá giới hạn 32KB. Hãy chọn ảnh nhỏ hơn để bật nút ghi thẻ.",
+                color = Color(0xFFD32F2F),
+                fontSize = 12.sp
+            )
         }
     }
 }
@@ -1633,7 +1681,7 @@ private suspend fun writeDataToCard(
         if (photoBytes != null) {
             val photoResult = BusCardManager.updatePhotoBytes(photoBytes)
             if (photoResult.isFailure) {
-                println("⚠️ Cảnh báo: Không thể ghi ảnh vào thẻ - ${photoResult.exceptionOrNull()?.message}")
+                println("Canh bao: Khong the ghi anh vao the - ${photoResult.exceptionOrNull()?.message}")
                 // Không return false - cho phép tiếp tục nếu ảnh lỗi
             }
         }

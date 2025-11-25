@@ -87,17 +87,17 @@ fun SmartCardManagementDialog(
                         val customer = customers.find { it.cardId == cardId }
                         if (customer != null) {
                             selectedCustomer = customer
-                            println("✓ Tự động đọc thẻ thành công: $cardId - ${customer.fullName}")
+                            println("Tu dong doc the thanh cong: $cardId - ${customer.fullName}")
                         } else {
                             println("⚠ Thẻ $cardId chưa có trong database")
                         }
                     }
                 }.onFailure { error ->
-                    println("✗ Lỗi tự động đọc thẻ: ${error.message}")
+                    println("Loi tu dong doc the: ${error.message}")
                 }
             }
         }
-        println("🔍 Initial connection check: isConnected = $isConnected")
+        println("Kiem tra ket noi ban dau: isConnected = $isConnected")
     }
     
     Dialog(
@@ -156,7 +156,7 @@ fun SmartCardManagementDialog(
                         )
                         Spacer(Modifier.width(8.dp))
                         Text(
-                            text = "✓ Đã chọn thẻ: ${customer.cardId}",
+                            text = "Đã đọc thẻ: ${customer.cardId}",
                             fontSize = 13.sp,
                             fontWeight = FontWeight.Medium,
                             color = Color(0xFF4CAF50)
@@ -212,13 +212,13 @@ fun SmartCardManagementDialog(
                                         val customer = customers.find { it.cardId == cardId }
                                         if (customer != null) {
                                             selectedCustomer = customer
-                                            println("✓ Đọc thẻ thành công: $cardId - ${customer.fullName}")
+                                            println("Doc the thanh cong: $cardId - ${customer.fullName}")
                                         } else {
-                                            println("⚠ Thẻ $cardId chưa có trong database")
+                                            println("The $cardId chua co trong database")
                                         }
                                     }
                                 }.onFailure { error ->
-                                    println("✗ Lỗi đọc thẻ: ${error.message}")
+                                    println("Loi doc the: ${error.message}")
                                 }
                             }
                         }
@@ -265,7 +265,7 @@ fun SmartCardManagementDialog(
             ChangePinDialog(
                 onDismiss = { showChangePinDialog = false },
                 onSuccess = {
-                    println("✅ PIN changed successfully")
+                    println("PIN da doi thanh cong")
                 }
             )
         }
@@ -416,9 +416,9 @@ private fun InformationTab(
                         valueColor = if (customer.balance > 0) Color(0xFF4CAF50) else Color(0xFFF44336)
                     )
                     InfoRow(
-                        "Trạng thái", 
-                        if (customer.isValid()) "Hợp lệ" else "Không hợp lệ",
-                        valueColor = if (customer.isValid()) Color(0xFF4CAF50) else Color(0xFFF44336)
+                        "Loại thẻ", 
+                        customer.cardType.displayName,
+                        valueColor = if (customer.cardType == models.CardType.MONTHLY) Color(0xFF4CAF50) else Color(0xFF2196F3)
                     )
                 }
             }

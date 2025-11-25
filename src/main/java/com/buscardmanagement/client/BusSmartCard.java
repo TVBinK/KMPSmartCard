@@ -1,14 +1,8 @@
 package com.buscardmanagement.client;
 
-import com.buscardmanagement.client.provider.SocketCardProvider;
-import com.buscardmanagement.client.provider.SocketProviderParameter;
 import com.buscardmanagement.client.util.HelpMethod;
 
-import java.awt.HeadlessException;
 import java.awt.image.BufferedImage;
-import java.security.NoSuchAlgorithmException;
-import java.security.Security;
-import java.util.Arrays;
 import java.util.List;
 import javax.smartcardio.Card;
 import javax.smartcardio.CardChannel;
@@ -47,6 +41,7 @@ public class BusSmartCard {
     private CardTerminal terminal;
     private List<CardTerminal> terminals;
     private ResponseAPDU response;
+    private String protocol; // Lưu protocol type: "T=0" hoặc "T=1"
 
     // Status flags
     public static boolean isCardBlocked = false;
@@ -77,73 +72,250 @@ public class BusSmartCard {
     }
 
     /**
-     * Kết nối với smart card qua SocketCardProvider
+     * Kết nối với smart card qua PC/SC reader
+     * 
+     * Theo tài liệu: Sử dụng TerminalFactory.getDefault() và terminal.connect("T=0")
      * 
      * @return true nếu kết nối thành công
-     * @throws NoSuchAlgorithmException Nếu không tìm thấy algorithm
      */
-    public boolean connectCard() throws NoSuchAlgorithmException {
-        try {
-            if (isConnected) {
-                HelpMethod.debugLog("Card already connected");
-                return true;
-            }
-
-            // Đăng ký SocketCardProvider nếu chưa có
-            if (Security.getProvider("SocketCardSim") == null) {
-                SocketCardProvider provider = new SocketCardProvider();
-                Security.addProvider(provider);
-                HelpMethod.debugLog("SocketCardProvider registered");
-            }
-
-            // Tạo factory với localhost:9025
-            factory = TerminalFactory.getInstance("SocketCardSim", 
-                new SocketProviderParameter("localhost", 9025));
-            
-            // Lấy danh sách terminals
-            terminals = factory.terminals().list();
-            if (terminals.isEmpty()) {
-                HelpMethod.debugLog("No card terminals found");
-                return false;
-            }
-
-            terminal = terminals.get(0);
-            HelpMethod.debugLog("Terminal found: " + terminal.getName());
-
-            // Kết nối với card (T=1 protocol)
-            card = terminal.connect("T=1");
-            channel = card.getBasicChannel();
-            
-            if (channel == null) {
-                HelpMethod.debugLog("Failed to get basic channel");
-                return false;
-            }
-
-            // Select applet bằng AID
-            response = channel.transmit(new CommandAPDU(0x00, (byte) 0xA4, 0x04, 0x00, AID_APPLET));
-            String statusWord = Integer.toHexString(response.getSW());
-            
-            HelpMethod.debugLog("Select applet response SW: " + statusWord);
-
-            if (statusWord.equals("9000")) {
-                isConnected = true;
-                HelpMethod.debugLog("Card connected successfully");
-                return true;
-            } else if (statusWord.equals("6400")) {
-                isConnected = true;
-                System.err.println("Warning: Card is disabled");
+    public boolean connectCard() {
+        // Nếu đã kết nối, kiểm tra lại protocol
+        if (isConnected && card != null) {
+            String currentProtocol = card.getProtocol();
+            if ("T=1".equals(currentProtocol)) {
+                HelpMethod.debugLog("The da ket noi voi T=1");
                 return true;
             } else {
-                HelpMethod.debugLog("Failed to select applet, SW: " + statusWord);
+                // Protocol không đúng, disconnect và kết nối lại
+                HelpMethod.debugLog("The dang ket noi voi protocol khac (" + currentProtocol + "), dang disconnect...");
+                disconnect();
+            }
+        }
+
+        // Kết nối với Java Card qua PC/SC reader - CHỈ T=1
+        return connectToRealCard();
+    }
+    
+    /**
+     * Kết nối với Java Card qua PC/SC reader
+     * 
+     * CHỈ sử dụng T=1 protocol - không hỗ trợ T=0
+     * 
+     * @return true nếu kết nối thành công
+     */
+    private boolean connectToRealCard() {
+        try {
+            // Đảm bảo disconnect card hiện tại nếu có
+            if (card != null) {
+                try {
+                    card.disconnect(false);
+                    HelpMethod.debugLog(">>> Da disconnect card cu");
+                } catch (Exception e) {
+                    // Ignore
+                }
+                card = null;
+                channel = null;
+            }
+            
+            // Sử dụng PC/SC reader mặc định
+            factory = TerminalFactory.getDefault();
+            terminals = factory.terminals().list();
+            
+            if (terminals.isEmpty()) {
+                HelpMethod.debugLog("Khong tim thay PC/SC terminals");
                 return false;
             }
-        } catch (HeadlessException | CardException ex) {
-            System.err.println("Error connecting to card: " + ex.getMessage());
+
+            // Tìm terminal có card
+            for (CardTerminal term : terminals) {
+                if (term.isCardPresent()) {
+                    terminal = term;
+                    HelpMethod.debugLog("Tim thay PC/SC Terminal: " + terminal.getName());
+                    
+                    // Đợi một chút để đảm bảo card sẵn sàng
+                    try {
+                        Thread.sleep(100); // Tăng thời gian đợi lên 100ms
+                    } catch (InterruptedException e) {
+                        // Ignore
+                    }
+                    
+                    // Kiểm tra card có sẵn sàng không
+                    try {
+                        if (!term.isCardPresent()) {
+                            HelpMethod.debugLog(">>> Card khong con trong reader: " + terminal.getName());
+                            continue;
+                        }
+                    } catch (CardException e) {
+                        HelpMethod.debugLog(">>> Loi khi kiem tra card: " + e.getMessage());
+                        continue;
+                    }
+                    
+                    // Thử kết nối với "*" trước để kiểm tra card hỗ trợ protocol nào
+                    String supportedProtocol = null;
+                    try {
+                        HelpMethod.debugLog(">>> Dang kiem tra protocol duoc ho tro...");
+                        Card testCard = terminal.connect("*");
+                        if (testCard != null) {
+                            supportedProtocol = testCard.getProtocol();
+                            HelpMethod.debugLog(">>> Card ho tro protocol: " + supportedProtocol);
+                            testCard.disconnect(false);
+                            
+                            // Nếu card không hỗ trợ T=1, báo lỗi
+                            if (supportedProtocol == null || !supportedProtocol.equals("T=1")) {
+                                System.err.println("========================================");
+                                System.err.println("LOI: Card khong ho tro T=1 protocol");
+                                System.err.println("  - Terminal: " + terminal.getName());
+                                System.err.println("  - Protocol duoc ho tro: " + (supportedProtocol != null ? supportedProtocol : "NULL"));
+                                System.err.println("  - Yeu cau: Card PHẢI ho tro T=1 protocol");
+                                System.err.println("");
+                                System.err.println("GIAI PHAP CHO JAVACOS VIRTUAL READER:");
+                                System.err.println("  1. Mo JAVACOS");
+                                System.err.println("  2. Vao Card Profile hoac Card Configuration");
+                                System.err.println("  3. Thay doi Protocol tu T=0 sang T=1");
+                                System.err.println("  4. Hoac tao card profile moi voi T=1 protocol");
+                                System.err.println("  5. Insert card lai vao Virtual Reader");
+                                System.err.println("");
+                                System.err.println("LY DO CAN T=1:");
+                                System.err.println("  - T=1 ho tro Extended Length APDU (len den 32KB)");
+                                System.err.println("  - Can thiet de luu anh khach hang (>255 bytes)");
+                                System.err.println("  - T=0 chi ho tro toi da 255 bytes/APDU");
+                                System.err.println("========================================");
+                                continue; // Thử terminal khác
+                            }
+                        }
+                    } catch (CardException e) {
+                        HelpMethod.debugLog(">>> Loi khi kiem tra protocol: " + e.getMessage());
+                        // Tiếp tục thử connect với T=1
+                    }
+                    
+                    // CHỈ sử dụng T=1 protocol - KHÔNG fallback về T=0
+                    try {
+                        HelpMethod.debugLog(">>> Dang ket noi voi T=1 protocol...");
+                        card = terminal.connect("T=1");
+                        
+                        if (card == null) {
+                            HelpMethod.debugLog(">>> LOI: Card la null sau khi connect");
+                            continue;
+                        }
+                        
+                        protocol = "T=1";
+                        HelpMethod.debugLog(">>> Ket noi thanh cong voi protocol: T=1");
+                    } catch (CardException e) {
+                        HelpMethod.debugLog(">>> LOI: Khong the ket noi voi T=1 protocol");
+                        HelpMethod.debugLog(">>> Chi tiet loi: " + e.getMessage());
+                        HelpMethod.debugLog(">>> Stack trace: " + java.util.Arrays.toString(e.getStackTrace()));
+                        
+                        System.err.println("========================================");
+                        System.err.println("LOI KET NOI: Card reader hoac card khong ho tro T=1");
+                        System.err.println("  - Terminal: " + terminal.getName());
+                        System.err.println("  - Protocol duoc ho tro: " + (supportedProtocol != null ? supportedProtocol : "Chua xac dinh"));
+                        System.err.println("  - Yeu cau: Card reader PHẢI ho tro T=1 protocol");
+                        System.err.println("  - T=1 can thiet de ghi anh lon (>255 bytes)");
+                        System.err.println("  - Chi tiet: " + e.getMessage());
+                        System.err.println("");
+                        if (terminal.getName().contains("JAVACOS")) {
+                            System.err.println("GIAI PHAP CHO JAVACOS VIRTUAL READER:");
+                            System.err.println("  1. Mo JAVACOS");
+                            System.err.println("  2. Vao Card Profile hoac Card Configuration");
+                            System.err.println("  3. Thay doi Protocol tu T=0 sang T=1");
+                            System.err.println("  4. Hoac tao card profile moi voi T=1 protocol");
+                            System.err.println("  5. Insert card lai vao Virtual Reader");
+                            System.err.println("  6. Kiem tra card da duoc insert trong JAVACOS chua");
+                        } else {
+                            System.err.println("GIAI PHAP:");
+                            System.err.println("  1. Kiem tra card da duoc insert vao reader chua");
+                            System.err.println("  2. Kiem tra card reader co ho tro T=1");
+                            System.err.println("  3. Kiem tra card co ho tro T=1 (co the card chi ho tro T=0)");
+                            System.err.println("  4. Disconnect JCIDE simulator neu dang chay");
+                            System.err.println("  5. Disconnect cac ung dung khac dang su dung card");
+                        }
+                        System.err.println("");
+                        System.err.println("LY DO CAN T=1:");
+                        System.err.println("  - T=1 ho tro Extended Length APDU (len den 32KB)");
+                        System.err.println("  - Can thiet de luu anh khach hang (>255 bytes)");
+                        System.err.println("  - T=0 chi ho tro toi da 255 bytes/APDU");
+                        System.err.println("========================================");
+                        continue; // Thử terminal khác
+                    }
+                    
+                    // Kiểm tra protocol thực tế từ card
+                    String actualProtocol = card.getProtocol();
+                    HelpMethod.debugLog(">>> Protocol thuc te tu card: " + actualProtocol);
+                    
+                    // Đảm bảo protocol là T=1 - NẾU KHÔNG PHẢI T=1 THÌ DISCONNECT VÀ BÁO LỖI
+                    if (actualProtocol == null || !actualProtocol.equals("T=1")) {
+                        System.err.println("========================================");
+                        System.err.println("LOI: Card tra ve protocol " + actualProtocol + " thay vi T=1");
+                        System.err.println("  - He thong CHI ho tro T=1 protocol");
+                        System.err.println("  - Dang disconnect card...");
+                        System.err.println("========================================");
+                        try {
+                            card.disconnect(false);
+                        } catch (Exception e) {
+                            // Ignore
+                        }
+                        card = null;
+                        channel = null;
+                        continue; // Thử terminal khác
+                    }
+                    
+                    protocol = "T=1";
+                    HelpMethod.debugLog(">>> Protocol duoc su dung: " + protocol);
+                    
+                    channel = card.getBasicChannel();
+                    
+                    if (channel == null) {
+                        HelpMethod.debugLog("Khong the lay basic channel");
+                        try {
+                            card.disconnect(false);
+                        } catch (Exception e) {
+                            // Ignore
+                        }
+                        card = null;
+                        continue;
+                    }
+
+                    // Select applet bằng AID
+                    response = channel.transmit(new CommandAPDU(0x00, (byte) 0xA4, 0x04, 0x00, AID_APPLET));
+                    String statusWord = Integer.toHexString(response.getSW());
+                    
+                    HelpMethod.debugLog("Select applet response SW: " + statusWord);
+
+                    if (statusWord.equals("9000")) {
+                        isConnected = true;
+                        HelpMethod.debugLog("Ket noi Java Card thanh cong voi T=1");
+                        return true;
+                    } else if (statusWord.equals("6400")) {
+                        isConnected = true;
+                        System.err.println("Canh bao: The da bi vo hieu hoa");
+                        return true;
+                    } else {
+                        HelpMethod.debugLog("Select applet that bai voi SW: " + statusWord);
+                        // Disconnect và thử terminal khác
+                        try {
+                            card.disconnect(false);
+                        } catch (Exception e) {
+                            // Ignore
+                        }
+                        card = null;
+                        channel = null;
+                    }
+                }
+            }
+            
+            HelpMethod.debugLog("Khong tim thay the trong PC/SC readers hoac khong the ket noi voi T=1");
+            return false;
+        } catch (CardException ex) {
+            HelpMethod.debugLog("Loi ket noi den PC/SC: " + ex.getMessage());
+            ex.printStackTrace();
+            return false;
+        } catch (Exception ex) {
+            HelpMethod.debugLog("Loi khong xac dinh: " + ex.getMessage());
             ex.printStackTrace();
             return false;
         }
     }
-
+    
     /**
      * Ngắt kết nối với smart card
      * 
@@ -151,17 +323,54 @@ public class BusSmartCard {
      */
     public boolean disconnect() {
         try {
-            if (card != null) {
-                card.disconnect(false);
-                isConnected = false;
-                HelpMethod.debugLog("Card disconnected");
-                return true;
+            if (channel != null) {
+                channel = null;
             }
-            return false;
-        } catch (CardException e) {
-            System.err.println("Error disconnecting card: " + e.getMessage());
+            
+            if (card != null) {
+                try {
+                    card.disconnect(false);
+                    HelpMethod.debugLog(">>> Da disconnect card");
+                } catch (CardException e) {
+                    HelpMethod.debugLog(">>> Loi khi disconnect card: " + e.getMessage());
+                }
+                card = null;
+            }
+            
+            if (terminal != null) {
+                // Không disconnect terminal, chỉ disconnect card
+                terminal = null;
+            }
+            
+            isConnected = false;
+            protocol = null;
+            HelpMethod.debugLog("Ngat ket noi the hoan tat");
+            return true;
+        } catch (Exception e) {
+            System.err.println("Loi ngat ket noi the: " + e.getMessage());
+            e.printStackTrace();
+            // Vẫn đặt lại các biến về null
+            card = null;
+            channel = null;
+            terminal = null;
+            isConnected = false;
+            protocol = null;
             return false;
         }
+    }
+
+    /**
+     * Kiểm tra card có đang trong reader không (không gửi APDU)
+     */
+    public boolean isCardPresent() {
+        try {
+            if (terminal != null) {
+                return terminal.isCardPresent();
+            }
+        } catch (CardException e) {
+            HelpMethod.debugLog("Loi kiem tra card present: " + e.getMessage());
+        }
+        return isConnected;
     }
 
     /**
@@ -172,7 +381,7 @@ public class BusSmartCard {
      */
     public ResponseAPDU sendCommandAPDU(byte[] command) {
         try {
-            HelpMethod.debugLog("Sending APDU command. Size: " + command.length + " bytes");
+            HelpMethod.debugLog("Gui APDU command. Kich thuoc: " + command.length + " bytes");
             HelpMethod.debugLog("Command: " + HelpMethod.bytesToHex(command));
 
             CommandAPDU commandAPDU = new CommandAPDU(command);
@@ -183,7 +392,7 @@ public class BusSmartCard {
             
             return response;
         } catch (CardException e) {
-            System.err.println("Error sending APDU: " + e.getMessage());
+            System.err.println("Loi gui APDU: " + e.getMessage());
             return null;
         }
     }
@@ -205,7 +414,7 @@ public class BusSmartCard {
             byte[] data = response.getData();
             return HelpMethod.convertByteToStringArr(data, '.');
         } else {
-            System.err.println("Failed to get customer info, SW: " + 
+            System.err.println("Khong the lay thong tin khach hang, SW: " + 
                 (response != null ? Integer.toHexString(response.getSW()) : "null"));
             return null;
         }
@@ -234,30 +443,48 @@ public class BusSmartCard {
             // Chuyển sang byte array
             byte[] dataBytes = HelpMethod.ConvertStringToByteArr(dataBuilder);
 
-            // Tạo APDU command (Extended Length format)
-            byte[] command = new byte[7 + dataBytes.length];
-            command[0] = (byte) 0x00; // CLA
-            command[1] = (byte) 0x20; // INS for UPDATE_INFO
-            command[2] = (byte) 0x00; // P1
-            command[3] = (byte) 0x00; // P2
-            command[4] = (byte) 0x00; // Extended Length indicator
-            command[5] = (byte) ((dataBytes.length >> 8) & 0xFF); // Lc high byte
-            command[6] = (byte) (dataBytes.length & 0xFF); // Lc low byte
-            System.arraycopy(dataBytes, 0, command, 7, dataBytes.length);
+            // Kiểm tra protocol và giới hạn data length cho T=0
+            if ("T=0".equals(protocol) && dataBytes.length > 255) {
+                System.err.println("Loi: Du lieu qua dai cho T=0 protocol (toi da 255 bytes, nhan duoc " + dataBytes.length + ")");
+                return false;
+            }
+
+            byte[] command;
+            if ("T=1".equals(protocol) && dataBytes.length > 255) {
+                // Extended Length format cho T=1
+                command = new byte[7 + dataBytes.length];
+                command[0] = (byte) 0x00; // CLA
+                command[1] = (byte) 0x20; // INS for UPDATE_INFO
+                command[2] = (byte) 0x00; // P1
+                command[3] = (byte) 0x00; // P2
+                command[4] = (byte) 0x00; // Extended Length indicator
+                command[5] = (byte) ((dataBytes.length >> 8) & 0xFF); // Lc high byte
+                command[6] = (byte) (dataBytes.length & 0xFF); // Lc low byte
+                System.arraycopy(dataBytes, 0, command, 7, dataBytes.length);
+            } else {
+                // Normal length format (1 byte Lc) cho T=0 hoặc data <= 255
+                command = new byte[5 + dataBytes.length];
+                command[0] = (byte) 0x00; // CLA
+                command[1] = (byte) 0x20; // INS for UPDATE_INFO
+                command[2] = (byte) 0x00; // P1
+                command[3] = (byte) 0x00; // P2
+                command[4] = (byte) dataBytes.length; // Lc (1 byte)
+                System.arraycopy(dataBytes, 0, command, 5, dataBytes.length);
+            }
 
             // Gửi command
             ResponseAPDU response = sendCommandAPDU(command);
 
             if (response != null && response.getSW() == 0x9000) {
-                HelpMethod.debugLog("Customer info updated successfully");
+                HelpMethod.debugLog("Cap nhat thong tin khach hang thanh cong");
                 return true;
             } else {
-                System.err.println("Failed to update customer info, SW: " + 
+                System.err.println("Khong the cap nhat thong tin khach hang, SW: " + 
                     (response != null ? Integer.toHexString(response.getSW()) : "null"));
                 return false;
             }
         } catch (Exception e) {
-            System.err.println("Error updating customer info: " + e.getMessage());
+            System.err.println("Loi cap nhat thong tin khach hang: " + e.getMessage());
             return false;
         }
     }
@@ -277,7 +504,7 @@ public class BusSmartCard {
             byte[] data = response.getData();
             return HelpMethod.convertByteToStringArr(data, '.');
         } else {
-            System.err.println("Failed to get card ID, SW: " + 
+            System.err.println("Khong the lay card ID, SW: " + 
                 (response != null ? Integer.toHexString(response.getSW()) : "null"));
             return null;
         }
@@ -304,15 +531,15 @@ public class BusSmartCard {
             ResponseAPDU response = sendCommandAPDU(command);
 
             if (response != null && response.getSW() == 0x9000) {
-                HelpMethod.debugLog("Card ID updated successfully: " + newCardId);
+                HelpMethod.debugLog("Cap nhat Card ID thanh cong: " + newCardId);
                 return true;
             } else {
-                System.err.println("Failed to update card ID, SW: " + 
+                System.err.println("Khong the cap nhat card ID, SW: " + 
                     (response != null ? Integer.toHexString(response.getSW()) : "null"));
                 return false;
             }
         } catch (Exception e) {
-            System.err.println("Error updating card ID: " + e.getMessage());
+            System.err.println("Loi cap nhat card ID: " + e.getMessage());
             return false;
         }
     }
@@ -332,7 +559,7 @@ public class BusSmartCard {
             byte[] data = response.getData();
             return HelpMethod.convertByteToStringArr(data, '.');
         } else {
-            System.err.println("Failed to get PIN, SW: " + 
+            System.err.println("Khong the lay PIN, SW: " + 
                 (response != null ? Integer.toHexString(response.getSW()) : "null"));
             return null;
         }
@@ -359,15 +586,15 @@ public class BusSmartCard {
             ResponseAPDU response = sendCommandAPDU(command);
 
             if (response != null && response.getSW() == 0x9000) {
-                HelpMethod.debugLog("PIN updated successfully");
+                HelpMethod.debugLog("Cap nhat PIN thanh cong");
                 return true;
             } else {
-                System.err.println("Failed to update PIN, SW: " + 
+                System.err.println("Khong the cap nhat PIN, SW: " + 
                     (response != null ? Integer.toHexString(response.getSW()) : "null"));
                 return false;
             }
         } catch (Exception e) {
-            System.err.println("Error updating PIN: " + e.getMessage());
+            System.err.println("Loi cap nhat PIN: " + e.getMessage());
             return false;
         }
     }
@@ -398,7 +625,7 @@ public class BusSmartCard {
                 int sw = response.getSW();
 
                 // Log chi tiết để debug
-                HelpMethod.debugLog("checkPin response - Data length: " + 
+                HelpMethod.debugLog("checkPin response - Do dai du lieu: " + 
                     (responseData != null ? responseData.length : 0) + 
                     ", Total bytes: " + responseBytes.length + 
                     ", SW: " + Integer.toHexString(sw));
@@ -417,14 +644,14 @@ public class BusSmartCard {
                     if (responseData != null && responseData.length > 0) {
                         // Có data trong response, kiểm tra byte đầu tiên
                         byte firstByte = responseData[0];
-                        HelpMethod.debugLog("First data byte: " + String.format("%02X", firstByte & 0xFF));
+                        HelpMethod.debugLog("Byte du lieu dau tien: " + String.format("%02X", firstByte & 0xFF));
                         
                         if (firstByte == (byte) 0x00) {
                             // PIN đúng
                             unknownIssue = false;
                             isCardBlocked = false;
                             counter = 0;
-                            HelpMethod.debugLog("PIN verified successfully");
+                            HelpMethod.debugLog("Xac thuc PIN thanh cong");
                             return true;
                         } else {
                             // PIN sai, byte đầu tiên chứa số lần sai
@@ -432,9 +659,9 @@ public class BusSmartCard {
                             counter = (byte)(firstByte & 0xFF); // Đảm bảo là unsigned
                             if (counter >= 4) {
                                 isCardBlocked = true;
-                                System.err.println("Card is blocked due to too many incorrect PIN attempts");
+                                System.err.println("The da bi khoa do nhap sai PIN qua nhieu lan");
                             } else {
-                                System.err.println("Incorrect PIN. Attempts remaining: " + (4 - counter));
+                                System.err.println("PIN khong dung. So lan con lai: " + (4 - counter));
                             }
                             return false;
                         }
@@ -450,14 +677,14 @@ public class BusSmartCard {
                             int dataIndex = responseBytes.length - 3; // Trước SW
                             if (dataIndex >= 0) {
                                 byte statusByte = responseBytes[dataIndex];
-                                HelpMethod.debugLog("Status byte before SW: " + String.format("%02X", statusByte & 0xFF));
+                                HelpMethod.debugLog("Status byte truoc SW: " + String.format("%02X", statusByte & 0xFF));
                                 
                                 if (statusByte == (byte) 0x00) {
                                     // PIN đúng
                                     unknownIssue = false;
                                     isCardBlocked = false;
                                     counter = 0;
-                                    HelpMethod.debugLog("PIN verified successfully (status byte = 0x00)");
+                                    HelpMethod.debugLog("Xac thuc PIN thanh cong (status byte = 0x00)");
                                     return true;
                                 } else {
                                     // PIN sai
@@ -465,9 +692,9 @@ public class BusSmartCard {
                                     counter = (byte)(statusByte & 0xFF);
                                     if (counter >= 4) {
                                         isCardBlocked = true;
-                                        System.err.println("Card is blocked due to too many incorrect PIN attempts");
+                                        System.err.println("The da bi khoa do nhap sai PIN qua nhieu lan");
                                     } else {
-                                        System.err.println("Incorrect PIN. Attempts remaining: " + (4 - counter));
+                                        System.err.println("PIN khong dung. So lan con lai: " + (4 - counter));
                                     }
                                     return false;
                                 }
@@ -478,15 +705,15 @@ public class BusSmartCard {
                         // Vì getCustomerInfo() không yêu cầu PIN đã được xác thực, nên không thể dùng để xác nhận
                         // Để an toàn, luôn coi như PIN sai nếu không có data xác nhận
                         // Card nên trả về data để phân biệt PIN đúng/sai (0x00 = đúng, >0x00 = số lần sai)
-                        HelpMethod.debugLog("SW 9000 with no data - card should return data to distinguish correct/incorrect PIN");
-                        HelpMethod.debugLog("Treating as incorrect PIN for security (no confirmation data)");
+                        HelpMethod.debugLog("SW 9000 khong co du lieu - the nen tra ve du lieu de phan biet PIN dung/sai");
+                        HelpMethod.debugLog("Xu ly nhu PIN sai de bao mat (khong co du lieu xac nhan)");
                         unknownIssue = false;
                         counter++;
                         if (counter >= 4) {
                             isCardBlocked = true;
-                            System.err.println("Card is blocked due to too many incorrect PIN attempts");
+                            System.err.println("The da bi khoa do nhap sai PIN qua nhieu lan");
                         } else {
-                            System.err.println("Incorrect PIN (no confirmation data in response). Attempts remaining: " + (4 - counter));
+                            System.err.println("PIN khong dung (khong co du lieu xac nhan trong response). So lan con lai: " + (4 - counter));
                         }
                         return false;
                     }
@@ -494,7 +721,7 @@ public class BusSmartCard {
                     // Thẻ bị khóa
                     unknownIssue = false;
                     isCardBlocked = true;
-                    System.err.println("Card is blocked due to too many incorrect PIN attempts");
+                    System.err.println("The da bi khoa do nhap sai PIN qua nhieu lan");
                     return false;
                 } else {
                     unknownIssue = true;
@@ -537,11 +764,11 @@ public class BusSmartCard {
 
                 if (responseBytes.length >= 1 && responseBytes[0] == (byte) 0x00 && sw == 0x9000) {
                     // PIN đúng
-                    HelpMethod.debugLog("PIN verified successfully (simple mode)");
+                    HelpMethod.debugLog("Xac thuc PIN thanh cong (che do don gian)");
                     return true;
                 } else if (responseBytes.length >= 1 && responseBytes[0] == (byte) 0x01 && sw == 0x9000) {
                     // PIN sai
-                    HelpMethod.debugLog("Incorrect PIN (simple mode)");
+                    HelpMethod.debugLog("PIN khong dung (che do don gian)");
                     return false;
                 } else {
                     System.err.println("Unexpected response. SW: " + Integer.toHexString(sw));
@@ -572,7 +799,7 @@ public class BusSmartCard {
             byte[] data = response.getData();
             return HelpMethod.convertByteToStringArr(data, '.');
         } else {
-            System.err.println("Failed to get balance, SW: " + 
+            System.err.println("Khong the lay so du, SW: " + 
                 (response != null ? Integer.toHexString(response.getSW()) : "null"));
             return null;
         }
@@ -599,15 +826,15 @@ public class BusSmartCard {
             ResponseAPDU response = sendCommandAPDU(command);
 
             if (response != null && response.getSW() == 0x9000) {
-                HelpMethod.debugLog("Balance updated successfully: " + balance);
+                HelpMethod.debugLog("Cap nhat so du thanh cong: " + balance);
                 return true;
             } else {
-                System.err.println("Failed to update balance, SW: " + 
+                System.err.println("Khong the cap nhat so du, SW: " + 
                     (response != null ? Integer.toHexString(response.getSW()) : "null"));
                 return false;
             }
         } catch (Exception e) {
-            System.err.println("Error updating balance: " + e.getMessage());
+            System.err.println("Loi cap nhat so du: " + e.getMessage());
             return false;
         }
     }
@@ -629,10 +856,10 @@ public class BusSmartCard {
 
         if (response != null && response.getSW() == 0x9000) {
             byte[] imageData = response.getData();
-            HelpMethod.debugLog("Received picture: " + imageData.length + " bytes");
+            HelpMethod.debugLog("Nhan duoc anh: " + imageData.length + " bytes");
             return HelpMethod.convertByteArrayToImage(imageData);
         } else {
-            System.err.println("Failed to get picture, SW: " + 
+            System.err.println("Khong the lay anh, SW: " + 
                 (response != null ? Integer.toHexString(response.getSW()) : "null"));
             return null;
         }
@@ -645,38 +872,93 @@ public class BusSmartCard {
      * @return true nếu cập nhật thành công
      */
     public boolean updatePicture(BufferedImage image) {
+        byte[] pictureBytes = HelpMethod.convertImageToByteArray(image);
+        if (pictureBytes == null) {
+            System.err.println("Khong the chuyen doi image sang byte array");
+            return false;
+        }
+        return updatePicture(pictureBytes);
+    }
+
+    /**
+     * Cập nhật ảnh khách hàng lên thẻ (dữ liệu raw bytes)
+     * 
+     * @param pictureBytes Byte array dữ liệu ảnh (JPG/PNG tùy ý)
+     * @return true nếu cập nhật thành công
+     */
+    public boolean updatePicture(byte[] pictureBytes) {
         try {
-            byte[] pictureBytes = HelpMethod.convertImageToByteArray(image);
-            if (pictureBytes == null) {
-                System.err.println("Failed to convert image to byte array");
+            if (pictureBytes == null || pictureBytes.length == 0) {
+                System.err.println("Anh rong, khong co gi de ghi len the");
                 return false;
             }
 
-            // Extended Length format
-            byte[] command = new byte[7 + pictureBytes.length];
-            command[0] = (byte) 0x00; // CLA
-            command[1] = (byte) 0x22; // INS for UPDATE_PICTURE
-            command[2] = (byte) 0x00; // P1
-            command[3] = (byte) 0x00; // P2
-            command[4] = (byte) 0x00; // Extended length indicator
-            command[5] = (byte) (pictureBytes.length >> 8); // Lc high byte
-            command[6] = (byte) (pictureBytes.length & 0xFF); // Lc low byte
-            System.arraycopy(pictureBytes, 0, command, 7, pictureBytes.length);
+            HelpMethod.debugLog(">>> Dang su dung protocol: " + protocol);
+            HelpMethod.debugLog(">>> Kich thuoc anh: " + pictureBytes.length + " bytes");
+            
+            // CHỈ cho phép T=1 protocol
+            if (!"T=1".equals(protocol)) {
+                System.err.println("========================================");
+                System.err.println("LOI: He thong chi ho tro T=1 protocol");
+                System.err.println("  - Protocol hien tai: " + protocol);
+                System.err.println("  - Yeu cau: T=1 protocol");
+                System.err.println("  - Kich thuoc anh: " + pictureBytes.length + " bytes");
+                System.err.println("========================================");
+                System.err.println("GIAI PHAP:");
+                System.err.println("  1. Kiem tra card reader co ho tro T=1");
+                System.err.println("  2. Kiem tra card co ho tro T=1");
+                System.err.println("  3. Anh se duoc luu vao DATABASE thay vi the");
+                System.err.println("========================================");
+                return false;
+            }
 
-            HelpMethod.debugLog("Updating picture: " + pictureBytes.length + " bytes");
+            byte[] command;
+            // T=1 protocol: Luôn sử dụng Extended Length format nếu data > 255 bytes
+            if (pictureBytes.length > 255) {
+                // Extended Length format cho T=1 (lên đến 32KB)
+                // Format: CLA INS P1 P2 00 Lc_High Lc_Low [Data]
+                HelpMethod.debugLog(">>> Su dung Extended Length APDU (T=1, data > 255 bytes)");
+                int lcHigh = (pictureBytes.length >> 8) & 0xFF;
+                int lcLow = pictureBytes.length & 0xFF;
+                HelpMethod.debugLog(">>> Lc High: " + lcHigh + ", Lc Low: " + lcLow + ", Total: " + pictureBytes.length);
+                
+                command = new byte[7 + pictureBytes.length];
+                command[0] = (byte) 0x00; // CLA
+                command[1] = (byte) 0x22; // INS for UPDATE_PICTURE
+                command[2] = (byte) 0x00; // P1
+                command[3] = (byte) 0x00; // P2
+                command[4] = (byte) 0x00; // Extended length indicator
+                command[5] = (byte) lcHigh; // Lc high byte
+                command[6] = (byte) lcLow; // Lc low byte
+                System.arraycopy(pictureBytes, 0, command, 7, pictureBytes.length);
+            } else {
+                // Standard format cho T=1 (data <= 255 bytes)
+                HelpMethod.debugLog(">>> Su dung Standard APDU (T=1, data <= 255 bytes)");
+                command = new byte[5 + pictureBytes.length];
+                command[0] = (byte) 0x00; // CLA
+                command[1] = (byte) 0x22; // INS for UPDATE_PICTURE
+                command[2] = (byte) 0x00; // P1
+                command[3] = (byte) 0x00; // P2
+                command[4] = (byte) pictureBytes.length; // Lc (1 byte)
+                System.arraycopy(pictureBytes, 0, command, 5, pictureBytes.length);
+            }
+
+            HelpMethod.debugLog("Cap nhat anh: " + pictureBytes.length + " bytes");
+            HelpMethod.debugLog(">>> Command length: " + command.length + " bytes");
+            HelpMethod.debugLog(">>> Command header: " + HelpMethod.bytesToHex(java.util.Arrays.copyOf(command, Math.min(10, command.length))));
 
             ResponseAPDU response = sendCommandAPDU(command);
 
             if (response == null || response.getSW() != 0x9000) {
-                System.err.println("Failed to update picture, SW: " +
+                System.err.println("Khong the cap nhat anh, SW: " +
                     (response != null ? Integer.toHexString(response.getSW()) : "null"));
                 return false;
             }
 
-            HelpMethod.debugLog("Picture updated successfully");
+            HelpMethod.debugLog("Cap nhat anh thanh cong");
             return true;
         } catch (Exception e) {
-            System.err.println("Error updating picture: " + e.getMessage());
+            System.err.println("Loi cap nhat anh: " + e.getMessage());
             return false;
         }
     }
@@ -694,10 +976,10 @@ public class BusSmartCard {
 
         if (response != null && response.getSW() == 0x9000) {
             byte[] data = response.getData();
-            HelpMethod.debugLog("Public key received: " + data.length + " bytes");
+            HelpMethod.debugLog("Nhan duoc public key: " + data.length + " bytes");
             return data;
         } else {
-            System.err.println("Failed to get public key, SW: " + 
+            System.err.println("Khong the lay public key, SW: " + 
                 (response != null ? Integer.toHexString(response.getSW()) : "null"));
             return null;
         }
@@ -724,7 +1006,7 @@ public class BusSmartCard {
             command[4] = (byte) dataToVerify.length; // Lc
             System.arraycopy(dataToVerify, 0, command, 5, dataToVerify.length);
 
-            HelpMethod.debugLog("Verifying card with random data: " + randomData);
+            HelpMethod.debugLog("Xac thuc the voi du lieu ngau nhien: " + randomData);
 
             ResponseAPDU response = sendCommandAPDU(command);
 
@@ -733,19 +1015,19 @@ public class BusSmartCard {
                 boolean verified = HelpMethod.verifySignature(publicKey, dataToVerify, signedData);
                 
                 if (verified) {
-                    HelpMethod.debugLog("Card verified successfully");
+                    HelpMethod.debugLog("Xac thuc the thanh cong");
                 } else {
-                    System.err.println("Card verification failed");
+                    System.err.println("Xac thuc the that bai");
                 }
                 
                 return verified;
             } else {
-                System.err.println("Failed to get signature, SW: " + 
+                System.err.println("Khong the lay chu ky, SW: " + 
                     (response != null ? Integer.toHexString(response.getSW()) : "null"));
                 return false;
             }
         } catch (Exception e) {
-            System.err.println("Error verifying card: " + e.getMessage());
+            System.err.println("Loi xac thuc the: " + e.getMessage());
             return false;
         }
     }
@@ -762,13 +1044,13 @@ public class BusSmartCard {
         ResponseAPDU response = sendCommandAPDU(command);
         
         if (response != null && response.getSW() == 0x9000) {
-            HelpMethod.debugLog("Card has been initialized");
+            HelpMethod.debugLog("The da duoc khoi tao");
             return true;
         } else if (response != null && response.getSW() == 0x6A88) {
-            HelpMethod.debugLog("Card has not been initialized");
+            HelpMethod.debugLog("The chua duoc khoi tao");
             return false;
         } else {
-            System.err.println("Failed to check card status");
+            System.err.println("Khong the kiem tra trang thai the");
             return false;
         }
     }
@@ -779,24 +1061,24 @@ public class BusSmartCard {
      * @return true nếu xóa thành công
      */
     public boolean clearCard() {
-        System.out.println("🗑️ [Java] clearCard() called - Preparing CLEAR command...");
+        System.out.println("[Java] clearCard() duoc goi - Chuan bi CLEAR command...");
         byte[] command = {(byte) 0x00, (byte) 0x18, (byte) 0x00, (byte) 0x00, (byte) 0x00};
-        System.out.println("🗑️ [Java] Sending CLEAR command: 00 18 00 00 00");
+        System.out.println("[Java] Gui CLEAR command: 00 18 00 00 00");
         
         ResponseAPDU response = sendCommandAPDU(command);
         
         if (response != null) {
-            System.out.println("🗑️ [Java] CLEAR Response SW: " + Integer.toHexString(response.getSW()));
+            System.out.println("[Java] CLEAR Response SW: " + Integer.toHexString(response.getSW()));
         } else {
-            System.err.println("🗑️ [Java] CLEAR Response is NULL!");
+            System.err.println("[Java] CLEAR Response la NULL!");
         }
         
         if (response != null && response.getSW() == 0x9000) {
-            HelpMethod.debugLog("Card cleared successfully");
-            System.out.println("✅ [Java] Card cleared successfully!");
+            HelpMethod.debugLog("Xoa the thanh cong");
+            System.out.println("[Java] Xoa the thanh cong!");
             return true;
         } else {
-            System.err.println("❌ [Java] Failed to clear card, SW: " + 
+            System.err.println("[Java] Khong the xoa the, SW: " + 
                 (response != null ? Integer.toHexString(response.getSW()) : "null"));
             return false;
         }
@@ -814,10 +1096,10 @@ public class BusSmartCard {
         if (response != null && response.getSW() == 0x9000) {
             isCardBlocked = false;
             counter = 0;
-            HelpMethod.debugLog("Card unlocked successfully");
+            HelpMethod.debugLog("Mo khoa the thanh cong");
             return true;
         } else {
-            System.err.println("Failed to unlock card, SW: " + 
+            System.err.println("Khong the mo khoa the, SW: " + 
                 (response != null ? Integer.toHexString(response.getSW()) : "null"));
             return false;
         }
@@ -834,10 +1116,10 @@ public class BusSmartCard {
         
         if (response != null && response.getSW() == 0x9000) {
             isCardBlocked = true;
-            HelpMethod.debugLog("Card locked successfully");
+            HelpMethod.debugLog("Khoa the thanh cong");
             return true;
         } else {
-            System.err.println("Failed to lock card, SW: " + 
+            System.err.println("Khong the khoa the, SW: " + 
                 (response != null ? Integer.toHexString(response.getSW()) : "null"));
             return false;
         }
@@ -869,15 +1151,15 @@ public class BusSmartCard {
             ResponseAPDU response = sendCommandAPDU(command);
 
             if (response != null && response.getSW() == 0x9000) {
-                HelpMethod.debugLog("Last tap info updated: " + tapInfo);
+                HelpMethod.debugLog("Cap nhat thong tin quet the gan nhat: " + tapInfo);
                 return true;
             } else {
-                System.err.println("Failed to update last tap info, SW: " + 
+                System.err.println("Khong the cap nhat thong tin quet the gan nhat, SW: " + 
                     (response != null ? Integer.toHexString(response.getSW()) : "null"));
                 return false;
             }
         } catch (Exception e) {
-            System.err.println("Error updating last tap info: " + e.getMessage());
+            System.err.println("Loi cap nhat thong tin quet the gan nhat: " + e.getMessage());
             return false;
         }
     }
@@ -895,7 +1177,7 @@ public class BusSmartCard {
             byte[] data = response.getData();
             return HelpMethod.convertByteToStringArr(data, '.');
         } else {
-            System.err.println("Failed to get last tap info, SW: " + 
+            System.err.println("Khong the lay thong tin quet the gan nhat, SW: " + 
                 (response != null ? Integer.toHexString(response.getSW()) : "null"));
             return null;
         }

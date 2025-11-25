@@ -52,7 +52,7 @@ fun AutoDeductionDialog(
     Dialog(onDismissRequest = onDismiss) {
         CustomCard(
             modifier = Modifier.width(500.dp),
-            backgroundColor = if (customer.isValid()) Color(0xFFF1F8F4) else Color(0xFFFFF1F1)
+            backgroundColor = Color(0xFFF1F8F4)
         ) {
             Column(
                 modifier = Modifier.fillMaxWidth(),
@@ -64,11 +64,11 @@ fun AutoDeductionDialog(
                         .size(80.dp)
                         .scale(scale),
                     shape = CircleShape,
-                    color = if (customer.isValid()) Color(0xFF4CAF50) else Color(0xFFF44336)
+                    color = Color(0xFF4CAF50)
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         Icon(
-                            imageVector = if (customer.isValid()) Icons.Default.CheckCircle else Icons.Default.Close,
+                            imageVector = Icons.Default.CheckCircle,
                             contentDescription = null,
                             modifier = Modifier.size(50.dp),
                             tint = Color.White
@@ -81,14 +81,12 @@ fun AutoDeductionDialog(
                 // Thông báo trạng thái
                 Text(
                     text = when {
-                        !customer.isValid() && customer.getCardStatus() == CardStatus.EXPIRED -> "THẺ ĐÃ HẾT HẠN"
-                        !customer.isValid() && customer.getCardStatus() == CardStatus.INSUFFICIENT_BALANCE -> "SỐ DƯ KHÔNG ĐỦ"
-                        tapType == TapType.TAP_ON -> "VÉ HỢP LỆ - ĐÃ QUẸT LÊN"
-                        else -> "VÉ HỢP LỆ - ĐÃ TRỪ TIỀN"
+                        tapType == TapType.TAP_ON -> "ĐÃ QUẸT THẺ LÊN"
+                        else -> "ĐÃ TRỪ TIỀN"
                     },
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Bold,
-                    color = if (customer.isValid()) Color(0xFF2E7D32) else Color(0xFFC62828)
+                    color = Color(0xFF2E7D32)
                 )
                 
                 CustomDivider()
@@ -340,7 +338,7 @@ fun AutoDeductionWidget(
                     .width(400.dp)
                     .padding(16.dp),
                 elevation = 8.dp,
-                backgroundColor = if (customer.isValid()) Color(0xFFF1F8F4) else Color(0xFFFFF1F1)
+                backgroundColor = Color(0xFFF1F8F4)
             ) {
                 Column(
                     modifier = Modifier.padding(16.dp),
@@ -351,10 +349,10 @@ fun AutoDeductionWidget(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Icon(
-                            imageVector = if (customer.isValid()) Icons.Default.CheckCircle else Icons.Default.Close,
+                            imageVector = Icons.Default.CheckCircle,
                             contentDescription = null,
                             modifier = Modifier.size(40.dp),
-                            tint = if (customer.isValid()) Color(0xFF4CAF50) else Color(0xFFF44336)
+                            tint = Color(0xFF4CAF50)
                         )
                         
                         Spacer(modifier = Modifier.width(12.dp))
@@ -367,9 +365,9 @@ fun AutoDeductionWidget(
                             )
                             
                             Text(
-                                text = if (customer.isValid()) "Vé hợp lệ" else "Vé không hợp lệ",
+                                text = customer.cardType.displayName,
                                 fontSize = 12.sp,
-                                color = if (customer.isValid()) Color(0xFF4CAF50) else Color(0xFFF44336)
+                                color = Color(0xFF4CAF50)
                             )
                         }
                         

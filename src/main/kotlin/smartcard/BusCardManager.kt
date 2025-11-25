@@ -23,63 +23,51 @@ object BusCardManager {
     val pinAttempts: Int
         get() = BusSmartCard.counter.toInt()
     
+    val isCardPresent: Boolean
+        get() = smartCard.isCardPresent()
+    
     // ========== KẾT NỐI ==========
     
     /**
      * Kết nối với smart card
-     * 
-     * @return Result<Boolean> - Success(true) nếu kết nối thành công
      */
-    fun connect(): Result<Boolean> {
-        return try {
-            val result = smartCard.connectCard()
-            if (result) {
-                Result.success(true)
-            } else {
-                Result.failure(Exception("Không thể kết nối với thẻ. Vui lòng kiểm tra card simulator đang chạy tại localhost:9025"))
-            }
-        } catch (e: Exception) {
-            Result.failure(Exception("Lỗi kết nối: ${e.message}", e))
+    fun connect(): Result<Boolean> = executeSafe("Kết nối") {
+        if (smartCard.connectCard()) {
+            Result.success(true)
+        } else {
+            Result.failure(Exception(
+                "Không thể kết nối với thẻ. Vui lòng đảm bảo:\n" +
+                "1. JCIDE Simulator đang chạy\n" +
+                "2. Applet đã được cài đặt trên simulator\n" +
+                "3. Hoặc kết nối Java Card thật qua PC/SC reader"
+            ))
         }
     }
     
     /**
      * Ngắt kết nối với smart card
      */
-    fun disconnect(): Result<Boolean> {
-        return try {
-            val result = smartCard.disconnect()
-            Result.success(result)
-        } catch (e: Exception) {
-            Result.failure(Exception("Lỗi ngắt kết nối: ${e.message}", e))
-        }
+    fun disconnect(): Result<Boolean> = executeSafe("Ngắt kết nối") {
+        Result.success(smartCard.disconnect())
     }
     
     // ========== THÔNG TIN KHÁCH HÀNG ==========
     
     /**
      * Lấy thông tin khách hàng từ thẻ
-     * 
-     * @return Result<CustomerInfo> - Thông tin khách hàng
      */
-    fun getCustomerInfo(): Result<CustomerInfo> {
-        return try {
-            val info = smartCard.customerInfo
-            if (info != null && info.size >= 5) {
-                Result.success(
-                    CustomerInfo(
-                        fullName = info.getOrNull(0) ?: "",
-                        customerType = info.getOrNull(1) ?: "",
-                        expiryDate = info.getOrNull(2) ?: "",
-                        cardType = info.getOrNull(3) ?: "",
-                        linkedCustomerId = info.getOrNull(4) ?: ""
-                    )
-                )
-            } else {
-                Result.failure(Exception("Không thể đọc thông tin khách hàng từ thẻ"))
-            }
-        } catch (e: Exception) {
-            Result.failure(Exception("Lỗi đọc thông tin: ${e.message}", e))
+    fun getCustomerInfo(): Result<CustomerInfo> = executeSafe("Đọc thông tin khách hàng") {
+        val info = smartCard.customerInfo
+        if (info != null && info.size >= 5) {
+            Result.success(CustomerInfo(
+                fullName = info.getOrNull(0) ?: "",
+                customerType = info.getOrNull(1) ?: "",
+                expiryDate = info.getOrNull(2) ?: "",
+                cardType = info.getOrNull(3) ?: "",
+                linkedCustomerId = info.getOrNull(4) ?: ""
+            ))
+        } else {
+            Result.failure(Exception("Không thể đọc thông tin khách hàng từ thẻ"))
         }
     }
     
@@ -92,19 +80,9 @@ object BusCardManager {
         expiryDate: String,
         cardType: String,
         linkedCustomerId: String = ""
-    ): Result<Boolean> {
-        return try {
-            val result = smartCard.updateCustomerInfo(
-                fullName, customerType, expiryDate, cardType, linkedCustomerId
-            )
-            if (result) {
-                Result.success(true)
-            } else {
-                Result.failure(Exception("Không thể cập nhật thông tin khách hàng"))
-            }
-        } catch (e: Exception) {
-            Result.failure(Exception("Lỗi cập nhật thông tin: ${e.message}", e))
-        }
+    ): Result<Boolean> = executeSafe("Cập nhật thông tin khách hàng") {
+        val result = smartCard.updateCustomerInfo(fullName, customerType, expiryDate, cardType, linkedCustomerId)
+        if (result) Result.success(true) else Result.failure(Exception("Không thể cập nhật thông tin khách hàng"))
     }
     
     // ========== CARD ID ==========
@@ -112,32 +90,23 @@ object BusCardManager {
     /**
      * Lấy Card ID từ thẻ
      */
-    fun getCardId(): Result<String> {
-        return try {
-            val cardIdArray = smartCard.cardId
-            if (cardIdArray != null && cardIdArray.isNotEmpty()) {
-                Result.success(cardIdArray[0])
-            } else {
-                Result.failure(Exception("Không thể đọc Card ID"))
-            }
-        } catch (e: Exception) {
-            Result.failure(Exception("Lỗi đọc Card ID: ${e.message}", e))
+    fun getCardId(): Result<String> = executeSafe("Đọc Card ID") {
+        val cardIdArray = smartCard.cardId
+        if (cardIdArray != null && cardIdArray.isNotEmpty()) {
+            Result.success(cardIdArray[0])
+        } else {
+            Result.failure(Exception("Không thể đọc Card ID"))
         }
     }
     
     /**
      * Cập nhật Card ID
      */
-    fun updateCardId(cardId: String): Result<Boolean> {
-        return try {
-            val result = smartCard.updateCardId(cardId)
-            if (result) {
-                Result.success(true)
-            } else {
-                Result.failure(Exception("Không thể cập nhật Card ID"))
-            }
-        } catch (e: Exception) {
-            Result.failure(Exception("Lỗi cập nhật Card ID: ${e.message}", e))
+    fun updateCardId(cardId: String): Result<Boolean> = executeSafe("Cập nhật Card ID") {
+        if (smartCard.updateCardId(cardId)) {
+            Result.success(true)
+        } else {
+            Result.failure(Exception("Không thể cập nhật Card ID"))
         }
     }
     
@@ -204,33 +173,23 @@ object BusCardManager {
     /**
      * Lấy số dư
      */
-    fun getBalance(): Result<Double> {
-        return try {
-            val balanceArray = smartCard.balance
-            if (balanceArray != null && balanceArray.isNotEmpty()) {
-                val balanceStr = balanceArray[0]
-                Result.success(balanceStr.toDoubleOrNull() ?: 0.0)
-            } else {
-                Result.failure(Exception("Không thể đọc số dư"))
-            }
-        } catch (e: Exception) {
-            Result.failure(Exception("Lỗi đọc số dư: ${e.message}", e))
+    fun getBalance(): Result<Double> = executeSafe("Đọc số dư") {
+        val balanceArray = smartCard.balance
+        if (balanceArray != null && balanceArray.isNotEmpty()) {
+            Result.success(balanceArray[0].toDoubleOrNull() ?: 0.0)
+        } else {
+            Result.failure(Exception("Không thể đọc số dư"))
         }
     }
     
     /**
      * Cập nhật số dư
      */
-    fun updateBalance(balance: Double): Result<Boolean> {
-        return try {
-            val result = smartCard.updateBalance(balance.toString())
-            if (result) {
-                Result.success(true)
-            } else {
-                Result.failure(Exception("Không thể cập nhật số dư"))
-            }
-        } catch (e: Exception) {
-            Result.failure(Exception("Lỗi cập nhật số dư: ${e.message}", e))
+    fun updateBalance(balance: Double): Result<Boolean> = executeSafe("Cập nhật số dư") {
+        if (smartCard.updateBalance(balance.toString())) {
+            Result.success(true)
+        } else {
+            Result.failure(Exception("Không thể cập nhật số dư"))
         }
     }
     
@@ -319,10 +278,12 @@ object BusCardManager {
                 // Nếu không có ảnh, bỏ qua
                 Result.success(true)
             } else {
-                // Convert byte array to BufferedImage
-                val inputStream = java.io.ByteArrayInputStream(photoBytes)
-                val image = javax.imageio.ImageIO.read(inputStream)
-                updatePicture(image)
+                val result = smartCard.updatePicture(photoBytes)
+                if (result) {
+                    Result.success(true)
+                } else {
+                    Result.failure(Exception("Không thể cập nhật ảnh"))
+                }
             }
         } catch (e: Exception) {
             Result.failure(Exception("Lỗi cập nhật ảnh từ bytes: ${e.message}", e))
@@ -406,44 +367,43 @@ object BusCardManager {
      */
     fun clearCard(): Result<Boolean> {
         return try {
-            println("🔍 BusCardManager.clearCard() - Kiểm tra kết nối: $isConnected")
+            println("BusCardManager.clearCard() - Kiem tra ket noi: $isConnected")
             if (!isConnected) {
                 return Result.failure(Exception("Chưa kết nối với thẻ. Vui lòng kết nối trước khi xóa."))
             }
             
             // Kiểm tra thẻ có dữ liệu trước khi xóa
-            println("🔍 BusCardManager.clearCard() - Kiểm tra thẻ có dữ liệu trước khi xóa...")
+            println("BusCardManager.clearCard() - Kiem tra the co du lieu truoc khi xoa...")
             val hasDataBefore = smartCard.checkCardCreated()
-            println("🔍 Thẻ có dữ liệu trước khi xóa: $hasDataBefore")
+            println("The co du lieu truoc khi xoa: $hasDataBefore")
             
             if (!hasDataBefore) {
-                println("⚠️ Thẻ đã rỗng, không cần xóa")
+                println("The da rong, khong can xoa")
                 return Result.success(true)
             }
             
-            println("🔍 BusCardManager.clearCard() - Gọi smartCard.clearCard()...")
+            println("BusCardManager.clearCard() - Goi smartCard.clearCard()...")
             val result = smartCard.clearCard()
-            println("🔍 BusCardManager.clearCard() - Kết quả từ Java clearCard(): $result")
+            println("BusCardManager.clearCard() - Ket qua tu Java clearCard(): $result")
             
-            // Kiểm tra lại sau khi xóa
-            Thread.sleep(100) // Delay ngắn để đảm bảo command được xử lý
+            Thread.sleep(100)
             val hasDataAfter = smartCard.checkCardCreated()
-            println("🔍 Thẻ có dữ liệu sau khi xóa: $hasDataAfter")
+            println("The co du lieu sau khi xoa: $hasDataAfter")
             
             if (result) {
                 if (!hasDataAfter) {
-                    println("✅ Xóa thẻ thành công - Đã xác nhận thẻ rỗng!")
+                    println("Xoa the thanh cong - Da xac nhan the rong!")
                     Result.success(true)
                 } else {
-                    println("⚠️ clearCard() trả về true nhưng thẻ vẫn còn dữ liệu!")
-                    Result.failure(Exception("Xóa thẻ không hoàn toàn. Thẻ vẫn có dữ liệu sau khi xóa."))
+                    println("clearCard() tra ve true nhung the van con du lieu!")
+                    Result.failure(Exception("Xoa the khong hoan toan. The van co du lieu sau khi xoa."))
                 }
             } else {
-                println("❌ Java clearCard() trả về false")
-                Result.failure(Exception("Không thể xóa dữ liệu thẻ. Kiểm tra console để xem chi tiết lỗi SW code."))
+                println("Java clearCard() tra ve false")
+                Result.failure(Exception("Khong the xoa du lieu the. Kiem tra console de xem chi tiet loi SW code."))
             }
         } catch (e: Exception) {
-            println("❌ Exception khi xóa thẻ: ${e.message}")
+            println("Exception khi xoa the: ${e.message}")
             e.printStackTrace()
             Result.failure(Exception("Lỗi xóa thẻ: ${e.message}", e))
         }
@@ -541,4 +501,15 @@ data class TapInfo(
     val tapType: String,          // TAP_ON, TAP_OFF
     val timestamp: String
 )
+
+/**
+ * Helper: Thực thi operation an toàn với error handling
+ */
+private inline fun <T> executeSafe(operationName: String, block: () -> Result<T>): Result<T> {
+    return try {
+        block()
+    } catch (e: Exception) {
+        Result.failure(Exception("Lỗi $operationName: ${e.message}", e))
+    }
+}
 

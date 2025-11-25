@@ -20,15 +20,6 @@ enum class CardType(val displayName: String) {
 }
 
 /**
- * Trạng thái thẻ
- */
-enum class CardStatus {
-    VALID,      // Hợp lệ
-    EXPIRED,    // Hết hạn
-    INSUFFICIENT_BALANCE  // Không đủ số dư
-}
-
-/**
  * Model thông tin khách hàng
  */
 data class Customer(
@@ -48,30 +39,25 @@ data class Customer(
     val photoBytes: ByteArray? = null
 ) {
     /**
-     * Kiểm tra trạng thái thẻ
+     * Kiểm tra và tự động chuyển thẻ tháng hết hạn về thẻ thường
+     * Trả về Customer đã được cập nhật nếu cần
      */
-    fun getCardStatus(): CardStatus {
-        // Kiểm tra hết hạn TRƯỚC (quan trọng nhất)
-        if (LocalDate.now().isAfter(expiryDate)) {
-            return CardStatus.EXPIRED
+    fun checkAndConvertExpiredMonthlyCard(): Customer {
+        // Nếu là thẻ tháng và đã hết hạn → chuyển về thẻ thường
+        if (cardType == CardType.MONTHLY && LocalDate.now().isAfter(expiryDate)) {
+            return this.copy(
+                cardType = CardType.NORMAL,
+                expiryDate = LocalDate.now().plusYears(100) // Thẻ thường không có hạn, đặt xa trong tương lai
+            )
         }
-        
-        // Nếu còn hạn → Kiểm tra loại thẻ
-        return when (cardType) {
-            CardType.MONTHLY -> {
-                // Thẻ tháng: Chỉ cần kiểm tra ngày hết hạn (đã check ở trên)
-                CardStatus.VALID
-            }
-            CardType.NORMAL -> {
-                // Thẻ thường: Cần kiểm tra số dư
-                if (balance <= 0) CardStatus.INSUFFICIENT_BALANCE else CardStatus.VALID
-            }
-        }
+        return this
     }
-
+    
     /**
-     * Kiểm tra thẻ có hợp lệ không
+     * Kiểm tra thẻ tháng có còn hạn không
      */
-    fun isValid(): Boolean = getCardStatus() == CardStatus.VALID
+    fun isMonthlyCardExpired(): Boolean {
+        return cardType == CardType.MONTHLY && LocalDate.now().isAfter(expiryDate)
+    }
 }
 

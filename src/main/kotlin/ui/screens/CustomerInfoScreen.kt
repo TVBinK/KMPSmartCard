@@ -2,6 +2,7 @@ package ui.screens
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.*
 import androidx.compose.material.icons.Icons
@@ -10,7 +11,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -36,7 +39,7 @@ fun CustomerInfoDialog(
 ) {
     var fullName by remember { mutableStateOf(existingCustomer?.fullName ?: "") }
     var cccd by remember { mutableStateOf(existingCustomer?.cccd ?: "") }
-    var dob by remember { mutableStateOf(existingCustomer?.dob ?: "") }
+    var dob by remember { mutableStateOf(TextFieldValue(existingCustomer?.dob ?: "")) }
     var address by remember { mutableStateOf(existingCustomer?.address ?: "") }
     var phone by remember { mutableStateOf(existingCustomer?.phone ?: "") }
     var selectedCustomerType by remember { mutableStateOf(existingCustomer?.customerType ?: CustomerType.NORMAL) }
@@ -203,16 +206,34 @@ fun CustomerInfoDialog(
                         )
                         
                         // Ngày sinh
-                        CustomTextField(
-                            label = "Ngày sinh (dd/MM/yyyy) *",
-                            value = dob,
-                            onValueChange = { value ->
-                                // Format tự động: dd/MM/yyyy
-                                val formatted = ui.components.formatDateOfBirth(value)
-                                dob = formatted
-                            },
-                            placeholder = "01/01/2000"
-                        )
+                        Column(modifier = Modifier.padding(vertical = 4.dp)) {
+                            Text(
+                                text = "Ngày sinh (dd/MM/yyyy) *",
+                                fontSize = 12.sp,
+                                color = Color.Gray,
+                                fontWeight = FontWeight.Medium
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            OutlinedTextField(
+                                value = dob,
+                                onValueChange = { value ->
+                                    // Format tự động: dd/MM/yyyy
+                                    val formatted = ui.components.formatDateOfBirth(value.text)
+                                    // Đặt con trỏ về cuối sau khi format
+                                    val cursorPosition = formatted.length
+                                    dob = TextFieldValue(formatted, TextRange(cursorPosition))
+                                },
+                                placeholder = { Text("01/01/2000", fontSize = 14.sp) },
+                                modifier = Modifier.fillMaxWidth(),
+                                singleLine = true,
+                                colors = TextFieldDefaults.outlinedTextFieldColors(
+                                    backgroundColor = Color.White,
+                                    focusedBorderColor = Color(0xFF2196F3),
+                                    unfocusedBorderColor = Color.Gray.copy(alpha = 0.5f)
+                                ),
+                                shape = RoundedCornerShape(8.dp)
+                            )
+                        }
                         
                         // Địa chỉ
                         CustomTextField(
@@ -417,7 +438,7 @@ fun CustomerInfoDialog(
                                     id = existingCustomer?.id ?: UUID.randomUUID().toString(),
                                     fullName = fullName,
                                     cccd = cccd,
-                                    dob = dob,
+                                    dob = dob.text,
                                     address = address,
                                     phone = phone,
                                     customerType = selectedCustomerType,

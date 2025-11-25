@@ -37,17 +37,17 @@ object DatabaseManager {
             
             // Kết nối database
             connection = DriverManager.getConnection(JDBC_URL)
-            println("✅ Connected to SQLite database: $DB_PATH")
+            println("Ket noi thanh cong den SQLite database: $DB_PATH")
             
             // Tạo các bảng
             createTables()
             
-            println("✅ Database initialized successfully")
+            println("Khoi tao database thanh cong")
         } catch (e: SQLException) {
-            println("❌ Error initializing database: ${e.message}")
+            println("Loi khoi tao database: ${e.message}")
             e.printStackTrace()
         } catch (e: ClassNotFoundException) {
-            println("❌ SQLite JDBC driver not found: ${e.message}")
+            println("Khong tim thay SQLite JDBC driver: ${e.message}")
             e.printStackTrace()
         }
     }
@@ -163,7 +163,7 @@ object DatabaseManager {
             statement.execute(createRouteHistoryTable)
             statement.execute("CREATE INDEX IF NOT EXISTS idx_route_history_card_id ON route_history(card_id)")
             
-            println("✅ Tables created successfully")
+            println("Tao bang thanh cong")
         }
     }
     
@@ -171,49 +171,8 @@ object DatabaseManager {
      * Migration: Thêm các cột mới vào bảng customer (backward compatible)
      */
     private fun migrateCustomerTable(statement: java.sql.Statement) {
-        try {
-            // Kiểm tra và thêm cột cccd
-            try {
-                statement.execute("ALTER TABLE customer ADD COLUMN cccd TEXT")
-                println("✅ Added column: cccd")
-            } catch (e: SQLException) {
-                if (e.message?.contains("duplicate column") == true) {
-                    println("⚠️ Column cccd already exists")
-                }
-            }
-            
-            // Kiểm tra và thêm cột dob
-            try {
-                statement.execute("ALTER TABLE customer ADD COLUMN dob TEXT")
-                println("✅ Added column: dob")
-            } catch (e: SQLException) {
-                if (e.message?.contains("duplicate column") == true) {
-                    println("⚠️ Column dob already exists")
-                }
-            }
-            
-            // Kiểm tra và thêm cột address
-            try {
-                statement.execute("ALTER TABLE customer ADD COLUMN address TEXT")
-                println("✅ Added column: address")
-            } catch (e: SQLException) {
-                if (e.message?.contains("duplicate column") == true) {
-                    println("⚠️ Column address already exists")
-                }
-            }
-            
-            // Kiểm tra và thêm cột phone
-            try {
-                statement.execute("ALTER TABLE customer ADD COLUMN phone TEXT")
-                println("✅ Added column: phone")
-            } catch (e: SQLException) {
-                if (e.message?.contains("duplicate column") == true) {
-                    println("⚠️ Column phone already exists")
-                }
-            }
-        } catch (e: Exception) {
-            println("⚠️ Migration error: ${e.message}")
-        }
+        val newColumns = listOf("cccd", "dob", "address", "phone")
+        addColumnsIfNotExist(statement, newColumns)
     }
     
     /**
@@ -221,22 +180,23 @@ object DatabaseManager {
      */
     private fun migrateEncryptionColumns(statement: java.sql.Statement) {
         val encryptedColumns = listOf(
-            "encrypted_full_name",
-            "encrypted_cccd",
-            "encrypted_dob",
-            "encrypted_address",
-            "encrypted_phone",
-            "public_key",
-            "private_key"
+            "encrypted_full_name", "encrypted_cccd", "encrypted_dob",
+            "encrypted_address", "encrypted_phone", "public_key", "private_key"
         )
-        
-        encryptedColumns.forEach { columnName ->
+        addColumnsIfNotExist(statement, encryptedColumns)
+    }
+    
+    /**
+     * Helper: Thêm các cột vào bảng nếu chưa tồn tại
+     */
+    private fun addColumnsIfNotExist(statement: java.sql.Statement, columns: List<String>) {
+        columns.forEach { columnName ->
             try {
                 statement.execute("ALTER TABLE customer ADD COLUMN $columnName TEXT")
-                println("✅ Added column: $columnName")
+                println("Da them cot: $columnName")
             } catch (e: SQLException) {
                 if (e.message?.contains("duplicate column") == true) {
-                    println("⚠️ Column $columnName already exists")
+                    println("Cot $columnName da ton tai")
                 }
             }
         }
@@ -249,11 +209,11 @@ object DatabaseManager {
      * @param pin Mã PIN để mã hóa dữ liệu (optional, nếu không có thì không mã hóa)
      */
     fun insertCustomer(customer: Customer, pin: String? = null): Boolean {
-        println("🔍 Checking if customer exists: ${customer.cardId}")
+        println("Kiem tra khach hang co ton tai: ${customer.cardId}")
         
         // Check database connection
         if (connection == null || !isConnected()) {
-            println("❌ Database connection is not available!")
+            println("Ket noi database khong kha dung!")
             return false
         }
         
@@ -262,11 +222,11 @@ object DatabaseManager {
         
         return if (existing != null) {
             // Update customer hiện có
-            println("⚠️ Customer ${customer.cardId} already exists, updating...")
+            println("Khach hang ${customer.cardId} da ton tai, dang cap nhat...")
             updateCustomer(customer)
         } else {
             // Insert customer mới
-            println("➕ Inserting new customer: ${customer.cardId}")
+            println("Them khach hang moi: ${customer.cardId}")
             
             // Mã hóa dữ liệu nếu có PIN
             val encryptedData = if (pin != null && pin.isNotEmpty()) {
@@ -279,10 +239,10 @@ object DatabaseManager {
                         customer.phone,
                         pin
                     )
-                    println("   🔐 Data encrypted with PIN")
+                    println("   Du lieu da ma hoa bang PIN")
                     encrypted
                 } catch (e: Exception) {
-                    println("   ⚠️ Encryption failed: ${e.message}")
+                    println("   Ma hoa that bai: ${e.message}")
                     null
                 }
             } else {
@@ -294,7 +254,7 @@ object DatabaseManager {
                 try {
                     SecurityUtils.generateRSAKeyPair()
                 } catch (e: Exception) {
-                    println("   ⚠️ RSA key generation failed: ${e.message}")
+                    println("   Tao cap khoa RSA that bai: ${e.message}")
                     null
                 }
             } else {
@@ -321,15 +281,15 @@ object DatabaseManager {
                     stmt.setString(8, customer.cardType.name)
                     stmt.setDouble(9, customer.balance)
                     stmt.setString(10, customer.expiryDate.toString())
-                    stmt.setString(11, if (customer.isValid()) "ACTIVE" else "EXPIRED")
+                    stmt.setString(11, "ACTIVE") // Luôn ACTIVE, không còn kiểm tra hợp lệ
                     stmt.setString(12, "****") // Không lưu PIN thật
                     stmt.setString(13, customer.linkedCustomerCode ?: "")
                     if (customer.photoBytes != null && customer.photoBytes.isNotEmpty()) {
                         stmt.setBytes(14, customer.photoBytes)
-                        println("   📷 Photo attached (${customer.photoBytes.size} bytes)")
+                        println("   Da dinh kem anh (${customer.photoBytes.size} bytes)")
                     } else {
                         stmt.setNull(14, java.sql.Types.BLOB)
-                        println("   📷 No photo attached")
+                        println("   Khong co anh dinh kem")
                     }
                     stmt.setString(15, "SYSTEM")
                     
@@ -352,28 +312,28 @@ object DatabaseManager {
                     if (keyPair != null) {
                         stmt.setString(21, SecurityUtils.publicKeyToBase64(keyPair.public))
                         stmt.setString(22, SecurityUtils.privateKeyToBase64(keyPair.private))
-                        println("   🔑 RSA keys generated and saved")
+                        println("   Da tao va luu cap khoa RSA")
                     } else {
                         stmt.setNull(21, java.sql.Types.VARCHAR)
                         stmt.setNull(22, java.sql.Types.VARCHAR)
                     }
                     
-                    println("   💾 Executing SQL INSERT...")
+                    println("   Dang thuc hien SQL INSERT...")
                     val rowsAffected = stmt.executeUpdate()
-                    println("✅ Customer inserted: ${customer.cardId} (rows: $rowsAffected)")
+                    println("Da them khach hang: ${customer.cardId} (rows: $rowsAffected)")
                     rowsAffected > 0
                 } ?: run {
-                    println("❌ Failed to prepare SQL statement")
+                    println("Khong the chuan bi SQL statement")
                     false
                 }
             } catch (e: SQLException) {
-                println("❌ SQLException inserting customer: ${e.message}")
+                println("SQLException khi them khach hang: ${e.message}")
                 println("   SQL State: ${e.sqlState}")
                 println("   Error Code: ${e.errorCode}")
                 e.printStackTrace()
                 false
             } catch (e: Exception) {
-                println("❌ Unexpected error inserting customer: ${e.message}")
+                println("Loi khong mong doi khi them khach hang: ${e.message}")
                 e.printStackTrace()
                 false
             }
@@ -397,7 +357,7 @@ object DatabaseManager {
                     pin
                 )
             } catch (e: Exception) {
-                println("   ⚠️ Encryption failed: ${e.message}")
+                println("   Ma hoa that bai: ${e.message}")
                 null
             }
         } else {
@@ -424,7 +384,7 @@ object DatabaseManager {
                 stmt.setString(7, customer.cardType.name)
                 stmt.setDouble(8, customer.balance)
                 stmt.setString(9, customer.expiryDate.toString())
-                stmt.setString(10, if (customer.isValid()) "ACTIVE" else "EXPIRED")
+                stmt.setString(10, "ACTIVE") // Luôn ACTIVE, không còn kiểm tra hợp lệ
                 stmt.setString(11, customer.linkedCustomerCode)
                 if (customer.photoBytes != null) {
                     stmt.setBytes(12, customer.photoBytes)
@@ -461,11 +421,11 @@ object DatabaseManager {
                 stmt.setString(18, customer.cardId)
                 
                 val rowsAffected = stmt.executeUpdate()
-                println("✅ Customer updated: ${customer.cardId} (rows: $rowsAffected)")
+                println("Da cap nhat khach hang: ${customer.cardId} (rows: $rowsAffected)")
                 rowsAffected > 0
             } ?: false
         } catch (e: SQLException) {
-            println("❌ Error updating customer: ${e.message}")
+            println("Loi cap nhat khach hang: ${e.message}")
             e.printStackTrace()
             false
         }
@@ -485,9 +445,7 @@ object DatabaseManager {
                     customers.add(mapResultSetToCustomer(rs))
                 }
             }
-            println("✅ Loaded ${customers.size} customers from database")
         } catch (e: SQLException) {
-            println("❌ Error loading customers: ${e.message}")
             e.printStackTrace()
         }
         
@@ -509,7 +467,7 @@ object DatabaseManager {
                 } else null
             }
         } catch (e: SQLException) {
-            println("❌ Error getting customer: ${e.message}")
+            println("Loi lay thong tin khach hang: ${e.message}")
             null
         }
     }
@@ -532,7 +490,7 @@ object DatabaseManager {
                 rowsAffected > 0
             } ?: false
         } catch (e: SQLException) {
-            println("❌ Error updating balance: ${e.message}")
+            println("Loi cap nhat so du: ${e.message}")
             false
         }
     }
@@ -547,11 +505,11 @@ object DatabaseManager {
             connection?.prepareStatement(sql)?.use { stmt ->
                 stmt.setString(1, cardId)
                 val rowsAffected = stmt.executeUpdate()
-                println("✅ Deleted customer: $cardId (rows: $rowsAffected)")
+                println("Da xoa khach hang: $cardId (rows: $rowsAffected)")
                 rowsAffected > 0
             } ?: false
         } catch (e: SQLException) {
-            println("❌ Error deleting customer: ${e.message}")
+            println("Loi xoa khach hang: ${e.message}")
             false
         }
     }
@@ -566,11 +524,11 @@ object DatabaseManager {
                 stmt.execute("DELETE FROM card_transaction")
                 stmt.execute("DELETE FROM customer")
                 stmt.execute("DELETE FROM bus_route")
-                println("✅ All data cleared from database")
+                println("Da xoa toan bo du lieu trong database")
                 true
             } ?: false
         } catch (e: SQLException) {
-            println("❌ Error clearing data: ${e.message}")
+            println("Loi xoa du lieu: ${e.message}")
             e.printStackTrace()
             false
         }
@@ -611,7 +569,7 @@ object DatabaseManager {
                 rowsAffected > 0
             } ?: false
         } catch (e: SQLException) {
-            println("❌ Error inserting transaction: ${e.message}")
+            println("Loi them giao dich: ${e.message}")
             false
         }
     }
@@ -644,7 +602,7 @@ object DatabaseManager {
                 }
             }
         } catch (e: SQLException) {
-            println("❌ Error loading transactions: ${e.message}")
+            println("Loi tai giao dich: ${e.message}")
         }
         
         return transactions
@@ -659,51 +617,33 @@ object DatabaseManager {
         val dateFormatter = DateTimeFormatter.ISO_LOCAL_DATE
         
         val cardId = rs.getString("card_id")
-        println("🔍 [Database] mapResultSetToCustomer cho card_id: $cardId")
         
         // Handle photo_bytes safely (có thể không tồn tại trong schema cũ)
         val photoBytes = try {
             rs.getBytes("photo_bytes")
         } catch (e: SQLException) {
-            println("⚠️ Column photo_bytes not found, using null")
             null
         }
         
         // Đọc các trường mới (có thể null nếu là database cũ)
         val cccd = try { 
-            val value = rs.getString("cccd")
-            val isNull = value == null
-            println("   📖 [Database] Đọc cccd từ DB: '$value' (null: $isNull)")
-            value ?: "" 
+            rs.getString("cccd") ?: "" 
         } catch (e: SQLException) { 
-            println("   ⚠️ [Database] Lỗi đọc cccd: ${e.message}")
             "" 
         }
         val dob = try { 
-            val value = rs.getString("dob")
-            val isNull = value == null
-            println("   📖 [Database] Đọc dob từ DB: '$value' (null: $isNull)")
-            value ?: "" 
+            rs.getString("dob") ?: "" 
         } catch (e: SQLException) { 
-            println("   ⚠️ [Database] Lỗi đọc dob: ${e.message}")
             "" 
         }
         val address = try { 
-            val value = rs.getString("address")
-            val isNull = value == null
-            println("   📖 [Database] Đọc address từ DB: '$value' (null: $isNull)")
-            value ?: "" 
+            rs.getString("address") ?: "" 
         } catch (e: SQLException) { 
-            println("   ⚠️ [Database] Lỗi đọc address: ${e.message}")
             "" 
         }
         val phone = try { 
-            val value = rs.getString("phone")
-            val isNull = value == null
-            println("   📖 [Database] Đọc phone từ DB: '$value' (null: $isNull)")
-            value ?: "" 
+            rs.getString("phone") ?: "" 
         } catch (e: SQLException) { 
-            println("   ⚠️ [Database] Lỗi đọc phone: ${e.message}")
             "" 
         }
         
@@ -737,9 +677,9 @@ object DatabaseManager {
     fun close() {
         try {
             connection?.close()
-            println("✅ Database connection closed")
+            println("Da dong ket noi database")
         } catch (e: SQLException) {
-            println("❌ Error closing database: ${e.message}")
+            println("Loi dong database: ${e.message}")
         }
     }
     
@@ -780,7 +720,7 @@ object DatabaseManager {
                 rowsAffected > 0
             } ?: false
         } catch (e: SQLException) {
-            println("❌ Error inserting route history: ${e.message}")
+            println("Loi them lich su lo trinh: ${e.message}")
             false
         }
     }
@@ -811,7 +751,7 @@ object DatabaseManager {
                 }
             }
         } catch (e: SQLException) {
-            println("❌ Error loading route history: ${e.message}")
+            println("Loi tai lich su lo trinh: ${e.message}")
         }
         
         return routes

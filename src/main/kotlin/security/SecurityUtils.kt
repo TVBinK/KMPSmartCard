@@ -49,94 +49,64 @@ object SecurityUtils {
     
     /**
      * Mã hóa dữ liệu bằng AES với khóa từ PIN
-     * 
-     * @param data Dữ liệu cần mã hóa
-     * @param pin Mã PIN để tạo khóa
      * @return ByteArray đã mã hóa (IV + encrypted data)
      */
-    fun encryptWithPin(data: String, pin: String): ByteArray {
-        return try {
-            val secretKey = deriveKeyFromPin(pin)
-            val cipher = Cipher.getInstance(AES_TRANSFORMATION)
-            
-            // Tạo IV ngẫu nhiên
-            val iv = ByteArray(GCM_IV_LENGTH)
-            SecureRandom().nextBytes(iv)
-            
-            val parameterSpec = GCMParameterSpec(GCM_TAG_LENGTH * 8, iv)
-            cipher.init(Cipher.ENCRYPT_MODE, secretKey, parameterSpec)
-            
-            val encryptedData = cipher.doFinal(data.toByteArray(UTF_8))
-            
-            // Kết hợp IV + encrypted data
-            ByteArray(iv.size + encryptedData.size).apply {
-                System.arraycopy(iv, 0, this, 0, iv.size)
-                System.arraycopy(encryptedData, 0, this, iv.size, encryptedData.size)
-            }
-        } catch (e: Exception) {
-            throw SecurityException("Lỗi mã hóa dữ liệu: ${e.message}", e)
-        }
+    fun encryptWithPin(data: String, pin: String): ByteArray = try {
+        val secretKey = deriveKeyFromPin(pin)
+        val cipher = Cipher.getInstance(AES_TRANSFORMATION)
+        
+        // Tạo IV ngẫu nhiên
+        val iv = ByteArray(GCM_IV_LENGTH).apply { SecureRandom().nextBytes(this) }
+        val parameterSpec = GCMParameterSpec(GCM_TAG_LENGTH * 8, iv)
+        cipher.init(Cipher.ENCRYPT_MODE, secretKey, parameterSpec)
+        
+        val encryptedData = cipher.doFinal(data.toByteArray(UTF_8))
+        
+        // Kết hợp IV + encrypted data
+        iv + encryptedData
+    } catch (e: Exception) {
+        throw SecurityException("Lỗi mã hóa dữ liệu: ${e.message}", e)
     }
     
     /**
      * Giải mã dữ liệu bằng AES với khóa từ PIN
-     * 
-     * @param encryptedData Dữ liệu đã mã hóa (IV + encrypted data)
-     * @param pin Mã PIN để tạo khóa
      * @return String đã giải mã
      */
-    fun decryptWithPin(encryptedData: ByteArray, pin: String): String {
-        return try {
-            val secretKey = deriveKeyFromPin(pin)
-            val cipher = Cipher.getInstance(AES_TRANSFORMATION)
-            
-            // Tách IV và encrypted data
-            val iv = ByteArray(GCM_IV_LENGTH)
-            val encrypted = ByteArray(encryptedData.size - GCM_IV_LENGTH)
-            System.arraycopy(encryptedData, 0, iv, 0, GCM_IV_LENGTH)
-            System.arraycopy(encryptedData, GCM_IV_LENGTH, encrypted, 0, encrypted.size)
-            
-            val parameterSpec = GCMParameterSpec(GCM_TAG_LENGTH * 8, iv)
-            cipher.init(Cipher.DECRYPT_MODE, secretKey, parameterSpec)
-            
-            val decryptedData = cipher.doFinal(encrypted)
-            String(decryptedData, UTF_8)
-        } catch (e: Exception) {
-            throw SecurityException("Lỗi giải mã dữ liệu: ${e.message}", e)
-        }
+    fun decryptWithPin(encryptedData: ByteArray, pin: String): String = try {
+        val secretKey = deriveKeyFromPin(pin)
+        val cipher = Cipher.getInstance(AES_TRANSFORMATION)
+        
+        // Tách IV và encrypted data
+        val iv = encryptedData.sliceArray(0 until GCM_IV_LENGTH)
+        val encrypted = encryptedData.sliceArray(GCM_IV_LENGTH until encryptedData.size)
+        
+        val parameterSpec = GCMParameterSpec(GCM_TAG_LENGTH * 8, iv)
+        cipher.init(Cipher.DECRYPT_MODE, secretKey, parameterSpec)
+        
+        String(cipher.doFinal(encrypted), UTF_8)
+    } catch (e: Exception) {
+        throw SecurityException("Lỗi giải mã dữ liệu: ${e.message}", e)
     }
     
     /**
      * Mã hóa nhiều trường dữ liệu cùng lúc
      */
     fun encryptCustomerData(
-        fullName: String,
-        cccd: String,
-        dob: String,
-        address: String,
-        phone: String,
-        pin: String
-    ): Map<String, ByteArray> {
-        return mapOf(
-            "fullName" to encryptWithPin(fullName, pin),
-            "cccd" to encryptWithPin(cccd, pin),
-            "dob" to encryptWithPin(dob, pin),
-            "address" to encryptWithPin(address, pin),
-            "phone" to encryptWithPin(phone, pin)
-        )
-    }
+        fullName: String, cccd: String, dob: String, address: String, phone: String, pin: String
+    ): Map<String, ByteArray> = mapOf(
+        "fullName" to encryptWithPin(fullName, pin),
+        "cccd" to encryptWithPin(cccd, pin),
+        "dob" to encryptWithPin(dob, pin),
+        "address" to encryptWithPin(address, pin),
+        "phone" to encryptWithPin(phone, pin)
+    )
     
     /**
      * Giải mã dữ liệu khách hàng
      */
     fun decryptCustomerData(
-        encryptedData: Map<String, ByteArray>,
-        pin: String
-    ): Map<String, String> {
-        return encryptedData.mapValues { (_, value) ->
-            decryptWithPin(value, pin)
-        }
-    }
+        encryptedData: Map<String, ByteArray>, pin: String
+    ): Map<String, String> = encryptedData.mapValues { (_, value) -> decryptWithPin(value, pin) }
     
     // ==================== RSA ENCRYPTION (Cho giao dịch) ====================
     
@@ -152,70 +122,55 @@ object SecurityUtils {
     /**
      * Mã hóa dữ liệu bằng RSA public key
      */
-    fun encryptWithRSA(data: String, publicKey: PublicKey): ByteArray {
-        return try {
-            val cipher = Cipher.getInstance(RSA_TRANSFORMATION)
-            cipher.init(Cipher.ENCRYPT_MODE, publicKey)
-            cipher.doFinal(data.toByteArray(UTF_8))
-        } catch (e: Exception) {
-            throw SecurityException("Lỗi mã hóa RSA: ${e.message}", e)
-        }
+    fun encryptWithRSA(data: String, publicKey: PublicKey): ByteArray = try {
+        Cipher.getInstance(RSA_TRANSFORMATION).apply {
+            init(Cipher.ENCRYPT_MODE, publicKey)
+        }.doFinal(data.toByteArray(UTF_8))
+    } catch (e: Exception) {
+        throw SecurityException("Lỗi mã hóa RSA: ${e.message}", e)
     }
     
     /**
      * Giải mã dữ liệu bằng RSA private key
      */
-    fun decryptWithRSA(encryptedData: ByteArray, privateKey: PrivateKey): String {
-        return try {
-            val cipher = Cipher.getInstance(RSA_TRANSFORMATION)
-            cipher.init(Cipher.DECRYPT_MODE, privateKey)
-            val decryptedData = cipher.doFinal(encryptedData)
-            String(decryptedData, UTF_8)
-        } catch (e: Exception) {
-            throw SecurityException("Lỗi giải mã RSA: ${e.message}", e)
-        }
+    fun decryptWithRSA(encryptedData: ByteArray, privateKey: PrivateKey): String = try {
+        String(Cipher.getInstance(RSA_TRANSFORMATION).apply {
+            init(Cipher.DECRYPT_MODE, privateKey)
+        }.doFinal(encryptedData), UTF_8)
+    } catch (e: Exception) {
+        throw SecurityException("Lỗi giải mã RSA: ${e.message}", e)
     }
     
     /**
-     * Chuyển PublicKey thành Base64 string để lưu vào database
+     * Chuyển PublicKey thành Base64 string
      */
-    fun publicKeyToBase64(publicKey: PublicKey): String {
-        return java.util.Base64.getEncoder().encodeToString(publicKey.encoded)
-    }
+    fun publicKeyToBase64(publicKey: PublicKey): String = 
+        java.util.Base64.getEncoder().encodeToString(publicKey.encoded)
     
     /**
-     * Chuyển PrivateKey thành Base64 string để lưu vào database
+     * Chuyển PrivateKey thành Base64 string
      */
-    fun privateKeyToBase64(privateKey: PrivateKey): String {
-        return java.util.Base64.getEncoder().encodeToString(privateKey.encoded)
-    }
+    fun privateKeyToBase64(privateKey: PrivateKey): String = 
+        java.util.Base64.getEncoder().encodeToString(privateKey.encoded)
     
     /**
      * Chuyển Base64 string thành PublicKey
      */
-    fun base64ToPublicKey(base64Key: String): PublicKey {
-        return try {
-            val keyBytes = java.util.Base64.getDecoder().decode(base64Key)
-            val keySpec = X509EncodedKeySpec(keyBytes)
-            val keyFactory = KeyFactory.getInstance(RSA_ALGORITHM)
-            keyFactory.generatePublic(keySpec)
-        } catch (e: Exception) {
-            throw SecurityException("Lỗi chuyển đổi PublicKey: ${e.message}", e)
-        }
+    fun base64ToPublicKey(base64Key: String): PublicKey = try {
+        val keyBytes = java.util.Base64.getDecoder().decode(base64Key)
+        KeyFactory.getInstance(RSA_ALGORITHM).generatePublic(X509EncodedKeySpec(keyBytes))
+    } catch (e: Exception) {
+        throw SecurityException("Lỗi chuyển đổi PublicKey: ${e.message}", e)
     }
     
     /**
      * Chuyển Base64 string thành PrivateKey
      */
-    fun base64ToPrivateKey(base64Key: String): PrivateKey {
-        return try {
-            val keyBytes = java.util.Base64.getDecoder().decode(base64Key)
-            val keySpec = PKCS8EncodedKeySpec(keyBytes)
-            val keyFactory = KeyFactory.getInstance(RSA_ALGORITHM)
-            keyFactory.generatePrivate(keySpec)
-        } catch (e: Exception) {
-            throw SecurityException("Lỗi chuyển đổi PrivateKey: ${e.message}", e)
-        }
+    fun base64ToPrivateKey(base64Key: String): PrivateKey = try {
+        val keyBytes = java.util.Base64.getDecoder().decode(base64Key)
+        KeyFactory.getInstance(RSA_ALGORITHM).generatePrivate(PKCS8EncodedKeySpec(keyBytes))
+    } catch (e: Exception) {
+        throw SecurityException("Lỗi chuyển đổi PrivateKey: ${e.message}", e)
     }
     
     /**
@@ -277,17 +232,15 @@ object SecurityUtils {
     }
     
     /**
-     * Chuyển ByteArray thành Base64 string để lưu vào database
+     * Chuyển ByteArray thành Base64 string
      */
-    fun bytesToBase64(bytes: ByteArray): String {
-        return java.util.Base64.getEncoder().encodeToString(bytes)
-    }
+    fun bytesToBase64(bytes: ByteArray): String = 
+        java.util.Base64.getEncoder().encodeToString(bytes)
     
     /**
      * Chuyển Base64 string thành ByteArray
      */
-    fun base64ToBytes(base64: String): ByteArray {
-        return java.util.Base64.getDecoder().decode(base64)
-    }
+    fun base64ToBytes(base64: String): ByteArray = 
+        java.util.Base64.getDecoder().decode(base64)
 }
 

@@ -91,7 +91,7 @@ public class HelpMethod {
             ByteArrayInputStream bis = new ByteArrayInputStream(byteArray);
             return ImageIO.read(bis);
         } catch (Exception e) {
-            System.err.println("Error converting byte array to image: " + e.getMessage());
+            System.err.println("Loi chuyen doi byte array sang image: " + e.getMessage());
             e.printStackTrace();
             return null;
         }
@@ -112,7 +112,7 @@ public class HelpMethod {
             ImageIO.write(image, "png", baos);
             return baos.toByteArray();
         } catch (Exception e) {
-            System.err.println("Error converting image to byte array: " + e.getMessage());
+            System.err.println("Loi chuyen doi image sang byte array: " + e.getMessage());
             e.printStackTrace();
             return null;
         }
@@ -178,39 +178,11 @@ public class HelpMethod {
             
             return rsaSign.verify(signedData);
         } catch (Exception e) {
-            System.err.println("Error verifying signature: " + e.getMessage());
+            System.err.println("Loi xac thuc chu ky: " + e.getMessage());
             throw e;
         }
     }
 
-    /**
-     * Format số tiền VNĐ
-     * 
-     * @param amount Số tiền
-     * @return Chuỗi đã format (vd: "150,000 VNĐ")
-     */
-    public static String formatCurrency(double amount) {
-        return String.format("%,.0f VNĐ", amount);
-    }
-
-    /**
-     * Parse số tiền từ string
-     * 
-     * @param amountStr Chuỗi số tiền (có thể chứa dấu phẩy và "VNĐ")
-     * @return Số tiền
-     */
-    public static double parseCurrency(String amountStr) {
-        try {
-            // Loại bỏ "VNĐ", khoảng trắng và dấu phẩy
-            String cleaned = amountStr.replace("VNĐ", "")
-                                      .replace(",", "")
-                                      .replace(" ", "")
-                                      .trim();
-            return Double.parseDouble(cleaned);
-        } catch (Exception e) {
-            return 0.0;
-        }
-    }
 
     /**
      * Chuyển đổi byte array sang hex string (dùng cho debug)
@@ -238,28 +210,5 @@ public class HelpMethod {
         System.out.println("[BusCard " + new Date() + "] " + message);
     }
 
-    /**
-     * Validate Card ID format
-     * 
-     * @param cardId Card ID cần kiểm tra
-     * @return true nếu hợp lệ
-     */
-    public static boolean isValidCardId(String cardId) {
-        if (cardId == null || cardId.trim().isEmpty()) {
-            return false;
-        }
-        // Card ID phải có định dạng: CARD-XXXXX
-        return cardId.matches("^CARD-[0-9]{3,}$");
-    }
-
-    /**
-     * Tạo Card ID mới
-     * 
-     * @param sequence Số thứ tự
-     * @return Card ID mới
-     */
-    public static String generateCardId(int sequence) {
-        return String.format("CARD-%03d", sequence);
-    }
 }
 

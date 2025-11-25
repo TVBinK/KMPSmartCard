@@ -3,11 +3,7 @@ package ui.screens
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.*
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Warning
-import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -40,14 +36,16 @@ fun TicketValidationDialog(
     var isLoading by remember { mutableStateOf(false) }
     
     val scope = rememberCoroutineScope()
-    val cardStatus = currentCustomer.getCardStatus()
-    val isValid = cardStatus == CardStatus.VALID
-    val daysUntilExpiry = ChronoUnit.DAYS.between(LocalDate.now(), currentCustomer.expiryDate)
+    val daysUntilExpiry = if (currentCustomer.cardType == CardType.MONTHLY) {
+        ChronoUnit.DAYS.between(LocalDate.now(), currentCustomer.expiryDate)
+    } else {
+        999999L // Thẻ thường không có hạn
+    }
     
     Dialog(onDismissRequest = onDismiss) {
         CustomCard(
             modifier = Modifier.width(450.dp),
-            backgroundColor = if (isValid) Color.White else Color(0xFFFFF5F5)
+            backgroundColor = Color.White
         ) {
             Column(
                 modifier = Modifier.fillMaxWidth(),
@@ -60,18 +58,10 @@ fun TicketValidationDialog(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Icon(
-                        imageVector = when (cardStatus) {
-                            CardStatus.VALID -> Icons.Default.CheckCircle
-                            CardStatus.EXPIRED -> Icons.Default.Close
-                            CardStatus.INSUFFICIENT_BALANCE -> Icons.Default.Warning
-                        },
+                        imageVector = if (currentCustomer.cardType == CardType.MONTHLY) Icons.Default.Star else Icons.Default.Star,
                         contentDescription = null,
                         modifier = Modifier.size(48.dp),
-                        tint = when (cardStatus) {
-                            CardStatus.VALID -> Color(0xFF4CAF50)
-                            CardStatus.EXPIRED -> Color(0xFFF44336)
-                            CardStatus.INSUFFICIENT_BALANCE -> Color(0xFFFF9800)
-                        }
+                        tint = if (currentCustomer.cardType == CardType.MONTHLY) Color(0xFF4CAF50) else Color(0xFF2196F3)
                     )
                     
                     Spacer(modifier = Modifier.width(12.dp))
@@ -221,19 +211,6 @@ fun TicketValidationDialog(
                 
                 CustomDivider()
                 
-                // Trạng thái tổng quát
-                StatusBadge(
-                    text = when (cardStatus) {
-                        CardStatus.VALID -> "Thẻ hợp lệ"
-                        CardStatus.EXPIRED -> "Thẻ đã hết hạn"
-                        CardStatus.INSUFFICIENT_BALANCE -> "Số dư không đủ"
-                    },
-                    isValid = isValid,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 8.dp)
-                        .height(48.dp)
-                )
                 
                 Spacer(modifier = Modifier.height(8.dp))
                 
@@ -438,13 +415,10 @@ fun TicketValidationPanel(
             }
         }
     } else {
-        val cardStatus = customer.getCardStatus()
-        val isValid = cardStatus == CardStatus.VALID
-        
         Card(
             modifier = modifier.width(350.dp).padding(8.dp),
             elevation = 4.dp,
-            backgroundColor = if (isValid) Color.White else Color(0xFFFFF5F5)
+            backgroundColor = Color.White
         ) {
             Column(
                 modifier = Modifier.padding(16.dp),
@@ -493,11 +467,14 @@ fun TicketValidationPanel(
                     value = customer.cardType.displayName
                 )
                 
-                InfoLabel(
-                    label = "Ngày hết hạn",
-                    value = customer.expiryDate.format(DateTimeFormatter.ofPattern("dd/MM/yyyy")),
-                    valueColor = if (isValid) Color.Black else Color(0xFFF44336)
-                )
+                // Chỉ hiển thị ngày hết hạn nếu là thẻ tháng
+                if (customer.cardType == CardType.MONTHLY) {
+                    InfoLabel(
+                        label = "Ngày hết hạn",
+                        value = customer.expiryDate.format(DateTimeFormatter.ofPattern("dd/MM/yyyy")),
+                        valueColor = Color.Black
+                    )
+                }
                 
                 InfoLabel(
                     label = "Số dư",
@@ -507,17 +484,6 @@ fun TicketValidationPanel(
                 )
                 
                 CustomDivider()
-                
-                // Trạng thái
-                StatusBadge(
-                    text = when (cardStatus) {
-                        CardStatus.VALID -> "Hợp lệ"
-                        CardStatus.EXPIRED -> "Hết hạn"
-                        CardStatus.INSUFFICIENT_BALANCE -> "Không đủ số dư"
-                    },
-                    isValid = isValid,
-                    modifier = Modifier.fillMaxWidth()
-                )
             }
         }
     }

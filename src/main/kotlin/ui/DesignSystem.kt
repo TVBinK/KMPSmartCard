@@ -91,6 +91,7 @@ object AppTypography {
     val h2Size = 24.sp
     val h3Size = 20.sp
     val h4Size = 18.sp
+    val h5size = 15.sp
     val bodyLargeSize = 16.sp
     val bodyMediumSize = 14.sp
     val bodySmallSize = 12.sp

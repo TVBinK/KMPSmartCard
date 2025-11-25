@@ -5,7 +5,7 @@
 [![Java](https://img.shields.io/badge/Java-21-red.svg)](https://www.oracle.com/java/)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-Hệ thống quản lý thẻ xe buýt thông minh cho thành phố Hà Nội, được xây dựng với **JavaCard Simulator** và **Kotlin Compose Desktop**. Hệ thống mô phỏng đầy đủ quy trình quản lý thẻ xe buýt từ nạp thông tin, nạp tiền, gia hạn vé đến quẹt thẻ tự động trên xe.
+Hệ thống quản lý thẻ xe buýt thông minh cho thành phố Hà Nội, được xây dựng với **Java Card Applet** và **Kotlin Compose Desktop**. Hệ thống sử dụng Java Card applet chạy trên JCIDE Simulator hoặc Java Card thật qua PC/SC reader, mô phỏng đầy đủ quy trình quản lý thẻ xe buýt từ nạp thông tin, nạp tiền, gia hạn vé đến quẹt thẻ tự động trên xe.
 
 ---
 
@@ -35,7 +35,7 @@ Hệ thống quản lý thẻ xe buýt thông minh cho thành phố Hà Nội, �
 - ✅ Xem lịch sử giao dịch của từng khách hàng
 
 ### 💳 Nạp Thông Tin Vào Thẻ (Wizard 4 Bước)
-1. **Kết nối Simulator** - Kiểm tra kết nối với JavaCard Simulator
+1. **Kết nối Java Card** - Kết nối với JCIDE Simulator hoặc Java Card thật qua PC/SC reader
 2. **Kiểm tra thẻ** - Xác định thẻ rỗng/có dữ liệu, xóa dữ liệu cũ nếu cần
 3. **Nhập thông tin** - Họ tên, CCCD, ngày sinh, địa chỉ, số điện thoại, loại thẻ, số dư, PIN, ảnh đại diện
 4. **Ghi vào thẻ** - Lưu thông tin vào Smart Card và Database đồng bộ
@@ -146,17 +146,14 @@ java -version
 
 ### Khởi Động Hệ Thống
 
-#### Bước 1: Khởi động JavaCard Simulator
+#### Bước 1: Chuẩn bị Java Card Applet trong JCIDE
 
-```bash
-# Windows
-.\gradlew.bat runSimulator
+1. Mở **JCIDE** và tạo project Java Card mới.
+2. Sao chép nội dung file `src/main/java/com/buscardmanagement/applet/BusCardApplet.java` trong repo vào file applet của JCIDE (thay toàn bộ template mặc định).
+3. Build project bên trong JCIDE để sinh file CAP.
+4. Install applet vừa build lên simulator của JCIDE, sau đó **Run Simulator** để cấp card ảo (applet chạy hoàn toàn trong JCIDE).
 
-# Linux/macOS
-./gradlew runSimulator
-```
-
-➡️ **Lưu ý:** Đợi simulator khởi động hoàn tất. Simulator sẽ lắng nghe trên **port 9025**.
+➡️ **Lưu ý:** Nếu bạn dùng Java Card thật/PCSC reader thì chỉ cần cắm thẻ và cài CAP tương tự bước trên.
 
 #### Bước 2: Khởi động Ứng dụng
 
@@ -173,7 +170,7 @@ java -version
 #### 1. Nạp Thông Tin Vào Thẻ Mới
 
 1. Click nút **"Nạp thông tin vào thẻ"** trên màn hình chính
-2. **Bước 1 - Kết nối:** Click "Kết nối Simulator" và đợi kết nối thành công
+2. **Bước 1 - Kết nối:** Click "Kết nối Java Card" và đợi kết nối thành công
 3. **Bước 2 - Kiểm tra thẻ:** Hệ thống sẽ kiểm tra thẻ. Nếu có dữ liệu cũ, click "Xóa dữ liệu"
 4. **Bước 3 - Nhập thông tin:**
    - Họ và tên
@@ -228,7 +225,7 @@ java -version
 #### 6. Quẹt Thẻ Trên Xe
 
 1. Click nút **"Quẹt thẻ tự động"**
-2. Đưa thẻ vào máy đọc (hoặc giữ thẻ gần simulator)
+2. Đưa thẻ vào máy đọc (hoặc quẹt trên JCIDE Simulator)
 3. Hệ thống sẽ tự động:
    - Phát hiện thẻ
    - Hiển thị thông tin khách hàng
@@ -262,9 +259,9 @@ java -version
 │   - BusSmartCard (Java)              │
 │   - APDU Communication              │
 ├─────────────────────────────────────┤
-│      JavaCard Simulator              │
-│   - JCardSimServer (Java)            │
-│   - Port 9025                        │
+│      Java Card                        │
+│   - BusCardApplet (Java Card)        │
+│   - JCIDE Simulator / PC/SC Reader   │
 └─────────────────────────────────────┘
 ```
 
@@ -273,7 +270,7 @@ java -version
 1. **UI Layer:** Compose Desktop nhận input từ người dùng
 2. **Business Logic:** BusCardManager xử lý logic nghiệp vụ
 3. **Smart Card Client:** BusSmartCard gửi APDU commands
-4. **Simulator:** JCardSimServer xử lý và trả về response
+4. **Java Card:** BusCardApplet xử lý và trả về response
 5. **Database:** DatabaseManager lưu trữ dữ liệu SQLite
 
 ---
@@ -315,15 +312,10 @@ KmpUiSmartCard/
 │   │       └── com/buscardmanagement/
 │   │           ├── client/               # Smart Card client
 │   │           │   ├── BusSmartCard.java
-│   │           │   ├── provider/         # Custom provider
-│   │           │   │   ├── SocketCard.java
-│   │           │   │   ├── SocketCardChannel.java
-│   │           │   │   ├── SocketCardProvider.java
-│   │   │           │   │   └── ...
 │   │           │   └── util/
 │   │           │       └── HelpMethod.java
-│   │           └── simulator/            # JavaCard Simulator
-│   │               └── JCardSimServer.java
+│   │           └── applet/               # Java Card Applet
+│   │               └── BusCardApplet.java
 │   └── test/                            # Test files
 ├── db/                                  # Database schemas
 │   ├── schema.sql
@@ -350,9 +342,9 @@ KmpUiSmartCard/
 - **SQLite JDBC** 3.45.0.0 - Driver kết nối database
 
 ### Smart Card
-- **JCardSim** 2.2.2 - JavaCard Simulator
-- **Java Smart Card I/O** - Giao tiếp với thẻ thông qua APDU
-- **Custom Socket Provider** - Provider tùy chỉnh cho simulator
+- **Java Card Applet** - BusCardApplet chạy trên Java Card
+- **Java Smart Card I/O** - Giao tiếp với thẻ thông qua APDU và PC/SC reader
+- **JCIDE** - Java Card Integrated Development Environment (để build và test applet)
 
 ### Utilities
 - **SLF4J** 2.0.9 + **Logback** 1.4.11 - Logging
@@ -433,23 +425,15 @@ KmpUiSmartCard/
 
 ## 🐛 Xử Lý Lỗi
 
-### Port 9025 Bị Chiếm
+### Không Kết Nối Được Java Card
 
-Nếu simulator không khởi động được do port bị chiếm:
+**Triệu chứng:** Lỗi khi kết nối với thẻ
 
-```bash
-# Windows
-netstat -ano | findstr :9025
-taskkill /F /PID <PID>
-
-# Linux/macOS
-lsof -ti:9025 | xargs kill -9
-```
-
-Sau đó chạy lại:
-```bash
-.\gradlew.bat runSimulator
-```
+**Giải pháp:**
+1. Đảm bảo JCIDE Simulator đang chạy và applet đã được cài đặt
+2. Hoặc kiểm tra Java Card thật đã được cắm vào PC/SC reader
+3. Kiểm tra driver PC/SC đã được cài đặt (Windows Smart Card service)
+4. Chạy lại wizard "Nạp thông tin vào thẻ"
 
 ### Thẻ Chưa Được Khởi Tạo
 
@@ -457,8 +441,8 @@ Sau đó chạy lại:
 
 **Giải pháp:**
 1. Chạy lại wizard "Nạp thông tin vào thẻ"
-2. Đảm bảo simulator đang chạy
-3. Kiểm tra kết nối thẻ
+2. Đảm bảo Java Card đã được kết nối
+3. Kiểm tra applet đã được cài đặt trên card
 
 ### Build Lỗi
 
@@ -503,12 +487,6 @@ Sau đó chạy lại:
 
 # Run tests
 .\gradlew.bat test
-```
-
-### Chạy Simulator
-
-```bash
-.\gradlew.bat runSimulator
 ```
 
 ### Chạy Ứng dụng
@@ -592,7 +570,7 @@ SOFTWARE.
 ## 🙏 Acknowledgments
 
 - **JetBrains** - Kotlin và Compose Desktop
-- **JCardSim** - JavaCard Simulator
+- **JCIDE** - Java Card Integrated Development Environment
 - **SQLite** - Database engine
 - **Material Design** - Design system
 

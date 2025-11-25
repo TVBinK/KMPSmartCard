@@ -414,12 +414,12 @@ fun ColumnScope.TopUpTab(
                                     """.trimIndent()
                                     
                                     // Lưu transaction đã mã hóa vào database
-                                    println("🔐 Transaction encrypted with RSA")
+                                    println("Giao dich da ma hoa bang RSA")
                                 }
                             }
                         }
                     } catch (e: Exception) {
-                        println("⚠️ RSA encryption failed: ${e.message}")
+                        println("Ma hoa RSA that bai: ${e.message}")
                         // Tiếp tục với giao dịch bình thường
                     }
                     
@@ -603,7 +603,7 @@ fun ColumnScope.ExtensionTab(
                             value = selectedCustomer!!.expiryDate.format(
                                 java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy")
                             ),
-                            valueColor = if (selectedCustomer!!.isValid()) Color.Black else Color(0xFFF44336),
+                            valueColor = Color.Black,
                             modifier = Modifier.weight(1f)
                         )
                     }
@@ -811,12 +811,12 @@ fun ColumnScope.ExtensionTab(
                                         }
                                     """.trimIndent()
                                     
-                                    println("🔐 Transaction encrypted with RSA")
+                                    println("Giao dich da ma hoa bang RSA")
                                 }
                             }
                         }
                     } catch (e: Exception) {
-                        println("⚠️ RSA encryption failed: ${e.message}")
+                        println("Ma hoa RSA that bai: ${e.message}")
                     }
                 }
                 
