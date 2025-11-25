@@ -38,7 +38,7 @@ fun EditCustomerDialog(
     var dob by remember { mutableStateOf(TextFieldValue(customer.dob, TextRange(customer.dob.length))) }
     var address by remember { mutableStateOf(customer.address) }
     var phone by remember { mutableStateOf(customer.phone) }
-    var customerType by remember { mutableStateOf(customer.customerType) }
+    val customerType = CustomerType.CUSTOMER
     var cardType by remember { mutableStateOf(customer.cardType) }
     var expiryDate by remember { mutableStateOf(customer.expiryDate) }
     var balance by remember { mutableStateOf(customer.balance.toInt().toString()) }
@@ -100,43 +100,14 @@ fun EditCustomerDialog(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Customer Type Dropdown
-                var customerTypeExpanded by remember { mutableStateOf(false) }
-                Box {
-                    OutlinedTextField(
-                        value = customerType.displayName,
-                        onValueChange = {},
-                        readOnly = true,
-                        label = { Text("Loại đối tượng") },
-                        trailingIcon = {
-                            IconButton(onClick = { customerTypeExpanded = !customerTypeExpanded }) {
-                                Icon(
-                                    imageVector = if (customerTypeExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                                    contentDescription = null
-                                )
-                            }
-                        },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { customerTypeExpanded = !customerTypeExpanded }
-                    )
-                    DropdownMenu(
-                        expanded = customerTypeExpanded,
-                        onDismissRequest = { customerTypeExpanded = false },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        CustomerType.values().forEach { type ->
-                            DropdownMenuItem(
-                                onClick = {
-                                    customerType = type
-                                    customerTypeExpanded = false
-                                }
-                            ) {
-                                Text(type.displayName)
-                            }
-                        }
-                    }
-                }
+                // Customer type (fixed)
+                OutlinedTextField(
+                    value = customerType.displayName,
+                    onValueChange = {},
+                    readOnly = true,
+                    label = { Text("Loại đối tượng") },
+                    modifier = Modifier.fillMaxWidth()
+                )
 
                 Spacer(modifier = Modifier.height(16.dp))
 

@@ -41,7 +41,7 @@ public class HelpMethod {
      * 
      * Dùng cho dữ liệu thẻ xe bus:
      * - String[0]: Họ tên
-     * - String[1]: Loại đối tượng (HSSV/Người cao tuổi/Thông thường)
+     * - String[1]: Loại đối tượng (khách hàng)
      * - String[2]: Ngày hết hạn (dd/MM/yyyy)
      * - String[3]: Loại thẻ (Vé Lượt/Vé Tháng)
      * - String[4]: Mã khách hàng liên kết (optional)

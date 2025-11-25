@@ -105,14 +105,6 @@ fun TicketValidationDialog(
                         backgroundColor = Color(0xFFE3F2FD)
                     )
                     
-                    // Đối tượng
-                    InfoCard(
-                        icon = Icons.Default.Person,
-                        label = "Đối tượng",
-                        value = customer.customerType.displayName,
-                        backgroundColor = Color(0xFFE3F2FD)
-                    )
-                    
                     // Ngày hết hạn
                     Card(
                         modifier = Modifier.fillMaxWidth(),
@@ -156,17 +148,6 @@ fun TicketValidationDialog(
                                         daysUntilExpiry <= 7 -> Color(0xFFE65100)
                                         else -> Color(0xFF2E7D32)
                                     }
-                                )
-                                
-                                Text(
-                                    text = when {
-                                        daysUntilExpiry < 0 -> "Đã hết hạn ${-daysUntilExpiry} ngày"
-                                        daysUntilExpiry == 0L -> "Hết hạn hôm nay"
-                                        daysUntilExpiry <= 7 -> "Còn $daysUntilExpiry ngày"
-                                        else -> "Còn $daysUntilExpiry ngày"
-                                    },
-                                    fontSize = 11.sp,
-                                    color = Color.Gray
                                 )
                             }
                         }
@@ -276,11 +257,7 @@ fun TicketValidationDialog(
                                 val cardId = cardIdResult.getOrNull()!!
                                 
                                 // Parse customer type
-                                val customerType = when(info.customerType) {
-                                    "HSSV" -> CustomerType.STUDENT
-                                    "Người cao tuổi" -> CustomerType.ELDERLY
-                                    else -> CustomerType.NORMAL
-                                }
+                                val customerType = CustomerType.CUSTOMER
                                 
                                 // Parse card type
                                 val cardType = when {

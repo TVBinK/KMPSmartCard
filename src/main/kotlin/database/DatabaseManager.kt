@@ -647,6 +647,13 @@ object DatabaseManager {
             "" 
         }
         
+        val customerTypeValue = try {
+            val storedType = rs.getString("customer_type") ?: CustomerType.CUSTOMER.name
+            CustomerType.valueOf(storedType)
+        } catch (e: Exception) {
+            CustomerType.CUSTOMER
+        }
+        
         return Customer(
             id = rs.getString("card_id"),
             cardId = rs.getString("card_id"),
@@ -655,7 +662,7 @@ object DatabaseManager {
             dob = dob,
             address = address,
             phone = phone,
-            customerType = CustomerType.valueOf(rs.getString("customer_type")),
+            customerType = customerTypeValue,
             cardType = try {
                 val cardTypeStr = rs.getString("card_type")
                 // Migration: Chuyển SINGLE_TRIP thành NORMAL

@@ -42,7 +42,7 @@ fun CustomerInfoDialog(
     var dob by remember { mutableStateOf(TextFieldValue(existingCustomer?.dob ?: "")) }
     var address by remember { mutableStateOf(existingCustomer?.address ?: "") }
     var phone by remember { mutableStateOf(existingCustomer?.phone ?: "") }
-    var selectedCustomerType by remember { mutableStateOf(existingCustomer?.customerType ?: CustomerType.NORMAL) }
+    val customerType = CustomerType.CUSTOMER
     var expiryDate by remember { mutableStateOf(existingCustomer?.expiryDate ?: LocalDate.now().plusMonths(1)) }
     var selectedCardType by remember { mutableStateOf(existingCustomer?.cardType ?: CardType.NORMAL) }
     var balance by remember { mutableStateOf(existingCustomer?.balance?.toString() ?: "0") }
@@ -140,11 +140,6 @@ fun CustomerInfoDialog(
                                     
                                     infoResult.onSuccess { info ->
                                         fullName = info.fullName
-                                        selectedCustomerType = when(info.customerType) {
-                                            "HSSV" -> CustomerType.STUDENT
-                                            "Người cao tuổi" -> CustomerType.ELDERLY
-                                            else -> CustomerType.NORMAL
-                                        }
                                         selectedCardType = when(info.cardType) {
                                             "Vé Tháng", "Ve Thang", "Thẻ Tháng" -> CardType.MONTHLY
                                             else -> CardType.NORMAL
@@ -255,13 +250,12 @@ fun CustomerInfoDialog(
                             placeholder = "0912345678"
                         )
                         
-                        // Loại đối tượng
-                        CustomDropdown(
-                            label = "Loại đối tượng *",
-                            items = CustomerType.values().toList(),
-                            selectedItem = selectedCustomerType,
-                            onItemSelected = { selectedCustomerType = it },
-                            itemLabel = { it.displayName }
+                        // Loại đối tượng (cố định)
+                        CustomTextField(
+                            label = "Loại đối tượng",
+                            value = customerType.displayName,
+                            onValueChange = {},
+                            enabled = false
                         )
                         
                         // Ngày hết hạn
@@ -394,11 +388,7 @@ fun CustomerInfoDialog(
                             val balanceValue = balance.toDoubleOrNull() ?: 0.0
                             
                             // Lưu thông tin lên thẻ
-                            val customerTypeStr = when(selectedCustomerType) {
-                                CustomerType.STUDENT -> "HSSV"
-                                CustomerType.ELDERLY -> "Người cao tuổi"
-                                else -> "Thông thường"
-                            }
+                            val customerTypeStr = "Khách hàng"
                             
                             val cardTypeStr = when(selectedCardType) {
                                 CardType.MONTHLY -> "Vé Tháng"
@@ -441,7 +431,7 @@ fun CustomerInfoDialog(
                                     dob = dob.text,
                                     address = address,
                                     phone = phone,
-                                    customerType = selectedCustomerType,
+                                    customerType = customerType,
                                     expiryDate = expiryDate,
                                     cardType = selectedCardType,
                                     balance = balanceValue,

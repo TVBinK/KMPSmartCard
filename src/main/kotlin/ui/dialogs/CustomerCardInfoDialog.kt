@@ -94,11 +94,7 @@ fun CustomerCardInfoDialog(
 
                 // Customer Type Label
                 Text(
-                    text = when (customer.customerType) {
-                        CustomerType.STUDENT -> "Học sinh/Sinh viên"
-                        CustomerType.ELDERLY -> "Người cao tuổi"
-                        CustomerType.NORMAL -> "Thông thường"
-                    },
+                    text = customer.customerType.displayName,
                     fontSize = 14.sp,
                     color = Color(0xFF757575)
                 )

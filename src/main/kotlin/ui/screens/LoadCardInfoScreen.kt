@@ -122,7 +122,7 @@ fun LoadCardInfoDialog(
     var dob by remember { mutableStateOf(TextFieldValue("")) }
     var address by remember { mutableStateOf("") }
     var phone by remember { mutableStateOf("") }
-    var customerType by remember { mutableStateOf(CustomerType.NORMAL) }
+    val customerType = CustomerType.CUSTOMER
     var cardType by remember { mutableStateOf(CardType.NORMAL) }  // Mặc định Thẻ Thường
     var expiryDate by remember { mutableStateOf(LocalDate.now().plusMonths(1)) }
     var balance by remember { mutableStateOf("100000") }

@@ -1,579 +1,145 @@
-# 🚌 Hệ Thống Quản Lý Thẻ Xe Buýt Smart Card
+# 🚌 Bus Smart Card Management System
 
-[![Kotlin](https://img.shields.io/badge/Kotlin-1.9+-blue.svg)](https://kotlinlang.org/)
-[![Compose Desktop](https://img.shields.io/badge/Compose%20Desktop-1.6.0-orange.svg)](https://www.jetbrains.com/lp/compose-desktop/)
-[![Java](https://img.shields.io/badge/Java-21-red.svg)](https://www.oracle.com/java/)
-[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-
-Hệ thống quản lý thẻ xe buýt thông minh cho thành phố Hà Nội, được xây dựng với **Java Card Applet** và **Kotlin Compose Desktop**. Hệ thống sử dụng Java Card applet chạy trên JCIDE Simulator hoặc Java Card thật qua PC/SC reader, mô phỏng đầy đủ quy trình quản lý thẻ xe buýt từ nạp thông tin, nạp tiền, gia hạn vé đến quẹt thẻ tự động trên xe.
+Nền tảng quản lý vé xe buýt thông minh kết hợp **Java Card Applet** (lưu trữ dữ liệu bảo mật trên thẻ) và **Kotlin Compose Desktop** (ứng dụng điều hành tại bến). Giải pháp cho phép đăng ký khách hàng, nạp/gia hạn vé, trừ tiền khi quẹt thẻ và đồng bộ giao dịch với cơ sở dữ liệu cục bộ.
 
 ---
 
-## 📑 Mục Lục
-
-- [Tính Năng](#-tính-năng)
-- [Yêu Cầu Hệ Thống](#-yêu-cầu-hệ-thống)
-- [Cài Đặt](#-cài-đặt)
-- [Hướng Dẫn Sử Dụng](#-hướng-dẫn-sử-dụng)
-- [Kiến Trúc Hệ Thống](#-kiến-trúc-hệ-thống)
-- [Cấu Trúc Dự Án](#-cấu-trúc-dự-án)
-- [Công Nghệ Sử Dụng](#-công-nghệ-sử-dụng)
-- [Database Schema](#-database-schema)
-- [Xử Lý Lỗi](#-xử-lý-lỗi)
-- [Phát Triển](#-phát-triển)
-- [License](#-license)
+## Tổng Quan Kiến Trúc
+- **Desktop Client (Kotlin + Compose Desktop):** giao diện điều hành, quản lý khách hàng, xử lý giao dịch, trực quan dữ liệu.
+- **Smart Card Layer:**
+  - `BusCardApplet` (Java Card 3.0.4) lưu thông tin thẻ, mã hóa AES-128-CBC toàn bộ dữ liệu EEPROM.
+  - `BusSmartCard` client sử dụng PC/SC để gửi APDU đến thẻ.
+- **Persistence:** SQLite (`bus_card_management.db`) truy cập thông qua `DatabaseManager`.
+- **Security Utilities:** `security/SecurityUtils.kt` xử lý mã hóa phía desktop, khởi tạo key, kiểm tra toàn vẹn dữ liệu.
 
 ---
 
-## ✨ Tính Năng
-
-### 🎫 Quản Lý Khách Hàng
-- ✅ Danh sách khách hàng với avatar và thông tin chi tiết
-- ✅ Tìm kiếm theo tên, Card ID, CCCD
-- ✅ Thêm, sửa, xóa khách hàng
-- ✅ Thống kê tổng quan (tổng số khách hàng, tổng số dư)
-- ✅ Xem lịch sử giao dịch của từng khách hàng
-
-### 💳 Nạp Thông Tin Vào Thẻ (Wizard 4 Bước)
-1. **Kết nối Java Card** - Kết nối với JCIDE Simulator hoặc Java Card thật qua PC/SC reader
-2. **Kiểm tra thẻ** - Xác định thẻ rỗng/có dữ liệu, xóa dữ liệu cũ nếu cần
-3. **Nhập thông tin** - Họ tên, CCCD, ngày sinh, địa chỉ, số điện thoại, loại thẻ, số dư, PIN, ảnh đại diện
-4. **Ghi vào thẻ** - Lưu thông tin vào Smart Card và Database đồng bộ
-
-**Tính năng đặc biệt:**
-- ✅ Tự động resize và nén ảnh (< 20KB)
-- ✅ Xóa dữ liệu thẻ cũ trước khi ghi mới
-- ✅ Validation đầy đủ cho tất cả các trường
-- ✅ Mã hóa PIN trước khi lưu
-
-### 💰 Nạp Tiền & Gia Hạn
-**Tab Nạp Tiền:**
-- Nhập số tiền tùy ý hoặc sử dụng nút nạp nhanh (50K, 100K, 200K, 500K)
-- Hiển thị số dư trước và sau khi nạp
-- Đồng bộ dữ liệu giữa Smart Card và Database
-
-**Tab Gia Hạn:**
-- **Vé Tháng:** 100,000 đ/tháng
-- Tự động phát hiện mua vé tháng lần đầu hay gia hạn
-- Kiểm tra số dư trước khi gia hạn
-- Cảnh báo nếu không đủ tiền
-- Trừ tiền và cập nhật ngày hết hạn tự động
-
-### 🚏 Chuyển Tuyến
-- Hiển thị tuyến hiện tại của khách hàng
-- Chọn tuyến mới từ danh sách tuyến xe buýt Hà Nội (11 tuyến)
-- Chọn điểm đi và điểm đến
-- Lưu lịch sử chuyển tuyến vào database
-- Mở Google Maps trong trình duyệt để xem tuyến đường
-
-### 🔐 Quản Lý Smart Card
-**Tab Thông tin:**
-- Đọc và hiển thị thông tin từ Smart Card
-- Hiển thị: Tên, Card ID, CCCD, Ngày sinh, Địa chỉ, Số điện thoại, Số dư, Loại thẻ, Ngày hết hạn, Ảnh đại diện
-
-**Tab Giao dịch:**
-- Lịch sử giao dịch từ Database
-- Các loại giao dịch: Nạp tiền, Gia hạn, Trừ tiền, Chuyển tuyến
-- Hiển thị: Thời gian, Loại giao dịch, Số tiền, Số dư trước/sau, Mô tả
-
-**Tab Đổi PIN:**
-- Xác thực PIN hiện tại
-- Đổi PIN mới với xác nhận
-- Cập nhật PIN trên Smart Card
-
-### 🚌 Quẹt Thẻ Tự Động (Real-time)
-Mô phỏng máy quẹt thẻ trên xe buýt:
-- Phát hiện thẻ tự động (polling mỗi 0.5 giây)
-- Hiển thị avatar và thông tin khách hàng
-- Hoạt động theo loại thẻ:
-  - **Vé Tháng (MONTHLY):** Không trừ tiền, chỉ kiểm tra còn hạn
-  - **Vé Lượt (NORMAL):** Trừ 7,000 đ/lần quẹt
-- Ghi nhận giao dịch tự động
-- Cập nhật số dư trên cả Smart Card và Database
-
-### ✅ Xác Thực Vé
-- Quét thẻ để kiểm tra tính hợp lệ
-- Hiển thị thông tin khách hàng và trạng thái thẻ
-- Kiểm tra số dư và ngày hết hạn
-
-### 🎫 Trừ Tiền Tự Động
-- Cấu hình số tiền trừ tự động
-- Trừ tiền từ thẻ khi quẹt
-- Ghi nhận giao dịch
+## Tính Năng Chính
+- **Quản lý khách hàng:** tạo mới, cập nhật, xem lịch sử hành trình, nhập ảnh chân dung, phân loại (ưu tiên/thường).
+- **Quản lý thẻ thông minh:** khởi tạo card ID, lưu thông tin cá nhân, đổi PIN, khóa/mở khóa thẻ, kiểm tra số dư trực tiếp trên thẻ.
+- **Giao dịch & vé:**
+  - Nạp tiền nhanh (50k/100k/200k/500k) hoặc nhập tùy ý.
+  - Gia hạn vé tháng, tự động chuyển về vé thường nếu hết hạn.
+  - Tính toán trừ tiền mỗi lần quẹt (7.000đ) với thẻ thường; miễn phí với thẻ tháng còn hạn.
+- **Giám sát thời gian thực:** màn hình quẹt thẻ live, thống kê số lượng khách, biểu đồ mini, danh sách hoạt động gần nhất.
+- **Lộ trình & kiểm tra vé:** hiển thị tuyến, chuyển tuyến, xác thực vé nhanh cho nhân viên soát vé.
+- **Bảo mật:** PIN mã hóa AES, bộ đếm sai PIN, khóa thẻ sau 4 lần nhập sai, chỉ admin mới mở khóa.
 
 ---
 
-## 💻 Yêu Cầu Hệ Thống
-
-- **Java Development Kit (JDK):** Version 21 trở lên
-- **Kotlin:** Version 1.9+ 
-- **Gradle:** Version 8.0+ (được bao gồm trong dự án)
-- **Hệ điều hành:** Windows 10/11, macOS, hoặc Linux
-- **RAM:** Tối thiểu 2GB (khuyến nghị 4GB)
-- **Ổ cứng:** Tối thiểu 500MB dung lượng trống
+## Thiết Lập & Chạy Ứng Dụng
+1. **Clone dự án & cài dependency:**
+   ```powershell
+   git clone <repo>
+   cd KmpUiSmartCard
+   ```
+2. **Copy file BusCardApplet vào jcide vào chạy cổng** 
+3. **Chạy Desktop App:**
+   ```powershell
+   .\gradlew.bat run
+   ```
+   Ứng dụng sẽ mở cửa sổ Compose Desktop toàn màn hình, tự động load dữ liệu và kết nối reader nếu có.
 
 ---
 
-## 🚀 Cài Đặt
+## Build & Nạp Java Card Applet
+1. Mở `src/main/java/com/buscardmanagement/applet/BusCardApplet.java` bằng JCIDE (hoặc IDE tương tự).
+2. Cập nhật `AID`, key và tham số nếu cần đúng với card thực tế.
+3. Dùng `build-applet.bat` (tuỳ chỉnh script) hoặc công cụ của JCIDE để compile và sinh CAP.
+4. Nạp CAP lên thẻ:
+   - Kết nối đầu đọc PC/SC.
+   - Sử dụng JCIDE, GlobalPlatformPro hoặc tool của nhà cung cấp để install CAP và thiết lập `AES key`, `IV`, `PIN` mặc định.
+5. Sau khi nạp thành công, dùng màn hình "Nạp thông tin vào thẻ" trong app desktop để khởi tạo dữ liệu khách hàng đầu tiên.
 
-### 1. Clone Repository
+> Lưu ý: nếu đang sử dụng thẻ giả lập (JCIDE simulator), cần chạy simulator trước khi mở ứng dụng desktop để client có thể kết nối qua PC/SC.
 
-```bash
-git clone <repository-url>
-cd KmpUiSmartCard
+---
+
+## Luồng Trao Đổi Dữ Liệu
+### Ghi dữ liệu xuống thẻ
+```
+Compose Desktop -> BusCardManager -> APDU
+  ↓                             (dữ liệu plaintext theo từng chunk)
+BusCardApplet -> gom chunk -> AES-128-CBC -> lưu EEPROM (customerInfo, balance, pin, ảnh, lịch sử quẹt)
 ```
 
-### 2. Kiểm Tra Java Version
-
-```bash
-java -version
-# Phải là Java 21 trở lên
+### Đọc dữ liệu từ thẻ
+```
+Desktop gửi APDU READ
+  ↓
+Applet đọc EEPROM (đang mã hóa) -> giải mã AES -> trả về plaintext chunk -> Desktop ghép lại hiển thị
 ```
 
-### 3. Build Project
-
-```bash
-# Windows
-.\gradlew.bat build
-
-# Linux/macOS
-./gradlew build
+### Xử lý PIN
+```
+Nhập PIN trên Desktop -> gửi xuống thẻ -> Applet giải mã PIN lưu trữ, so sánh byte-by-byte
+  - Đúng: reset counter, cho phép thao tác
+  - Sai: tăng counter, >=4 lần sẽ set cờ khóa thẻ
 ```
 
+Chi tiết triển khai có trong `BusCardApplet.java` và `smartcard/BusCardManager.kt`.
+
 ---
 
-## 📖 Hướng Dẫn Sử Dụng
+## Bảo Mật
+- **Thuật toán:** AES-128-CBC, padding PKCS#7.
+- **Key/IV:** sinh ngẫu nhiên 16 byte/thẻ, lưu EEPROM (không gửi ra khỏi thẻ).
+- **Dữ liệu mã hóa:** thông tin khách, số dư, card ID, ảnh bytes, lịch sử quẹt, PIN, thông tin lần quẹt cuối.
+- **Desktop SecurityUtils:** tạo khóa phiên khi đồng bộ, bảo vệ dữ liệu tạm trong RAM.
+- **Counter PIN:** lưu trên thẻ, đảm bảo không thể brute-force từ desktop.
 
-### Khởi Động Hệ Thống
+---
 
-#### Bước 1: Chuẩn bị Java Card Applet trong JCIDE
-
-1. Mở **JCIDE** và tạo project Java Card mới.
-2. Sao chép nội dung file `src/main/java/com/buscardmanagement/applet/BusCardApplet.java` trong repo vào file applet của JCIDE (thay toàn bộ template mặc định).
-3. Build project bên trong JCIDE để sinh file CAP.
-4. Install applet vừa build lên simulator của JCIDE, sau đó **Run Simulator** để cấp card ảo (applet chạy hoàn toàn trong JCIDE).
-
-➡️ **Lưu ý:** Nếu bạn dùng Java Card thật/PCSC reader thì chỉ cần cắm thẻ và cài CAP tương tự bước trên.
-
-#### Bước 2: Khởi động Ứng dụng
-
-```bash
-# Windows
-.\gradlew.bat run
-
-# Linux/macOS
-./gradlew run
+## Cấu Trúc Thư Mục
+```
+src/
+├─ main/
+│  ├─ kotlin/
+│  │  ├─ Main.kt, MainApp.kt
+│  │  ├─ database/           # DatabaseManager + DAO SQLite
+│  │  ├─ smartcard/          # BusCardManager: PC/SC + APDU helpers
+│  │  ├─ ui/                 # Compose components, screens, dialogs
+│  │  ├─ models/             # Customer, Transaction, Trip, CardType...
+│  │  └─ security/, utils/   # Helper & constants
+│  └─ java/com/buscardmanagement/
+│     ├─ applet/             # BusCardApplet + biến thể clean/fixed
+│     └─ client/             # BusSmartCard.java (thao tác APDU native)
+└─ resources/icons/          # Icon sử dụng trong UI
 ```
 
-### Quy Trình Sử Dụng
-
-#### 1. Nạp Thông Tin Vào Thẻ Mới
-
-1. Click nút **"Nạp thông tin vào thẻ"** trên màn hình chính
-2. **Bước 1 - Kết nối:** Click "Kết nối Java Card" và đợi kết nối thành công
-3. **Bước 2 - Kiểm tra thẻ:** Hệ thống sẽ kiểm tra thẻ. Nếu có dữ liệu cũ, click "Xóa dữ liệu"
-4. **Bước 3 - Nhập thông tin:**
-   - Họ và tên
-   - Số CCCD
-   - Ngày sinh
-   - Địa chỉ
-   - Số điện thoại
-   - Loại thẻ (Thường hoặc Tháng)
-   - Số dư ban đầu
-   - PIN (6 chữ số)
-   - Ảnh đại diện (tự động resize < 20KB)
-5. **Bước 4 - Ghi vào thẻ:** Click "Ghi vào thẻ" và đợi hoàn tất
-
-#### 2. Quản Lý Khách Hàng
-
-- **Xem danh sách:** Danh sách khách hàng hiển thị trên màn hình chính
-- **Tìm kiếm:** Nhập tên, Card ID hoặc CCCD vào ô tìm kiếm
-- **Xem chi tiết:** Click vào khách hàng để xem thông tin chi tiết
-- **Sửa thông tin:** Click "Sửa" trong màn hình chi tiết
-- **Xóa khách hàng:** Click "Xóa" và xác nhận
-
-#### 3. Nạp Tiền
-
-1. Chọn khách hàng từ danh sách
-2. Click nút **"Nạp tiền / Gia hạn"**
-3. Chọn tab **"Nạp tiền"**
-4. Nhập số tiền hoặc click nút nạp nhanh (50K, 100K, 200K, 500K)
-5. Click **"Nạp tiền"** và xác nhận
-6. Số dư sẽ được cập nhật trên cả Smart Card và Database
-
-#### 4. Gia Hạn Vé Tháng
-
-1. Chọn khách hàng có thẻ loại **"Thường"** hoặc **"Tháng"**
-2. Click nút **"Nạp tiền / Gia hạn"**
-3. Chọn tab **"Gia hạn"**
-4. Hệ thống sẽ tự động phát hiện:
-   - **Mua vé tháng lần đầu:** Nếu thẻ loại "Thường"
-   - **Gia hạn:** Nếu thẻ loại "Tháng" và đã có ngày hết hạn
-5. Kiểm tra số dư (cần ≥ 100,000 đ)
-6. Click **"Gia hạn"** và xác nhận
-7. Ngày hết hạn sẽ được cập nhật (+30 ngày)
-
-#### 5. Chuyển Tuyến
-
-1. Chọn khách hàng
-2. Click nút **"Chuyển tuyến"**
-3. Chọn tuyến xe buýt từ dropdown
-4. Chọn điểm đi và điểm đến
-5. Click **"Đóng"** để lưu
-6. Click **"Mở trong trình duyệt"** để xem trên Google Maps
-
-#### 6. Quẹt Thẻ Trên Xe
-
-1. Click nút **"Quẹt thẻ tự động"**
-2. Đưa thẻ vào máy đọc (hoặc quẹt trên JCIDE Simulator)
-3. Hệ thống sẽ tự động:
-   - Phát hiện thẻ
-   - Hiển thị thông tin khách hàng
-   - Kiểm tra loại thẻ:
-     - **Vé Tháng:** Kiểm tra còn hạn → Ghi nhận giao dịch
-     - **Vé Lượt:** Kiểm tra số dư → Trừ 7,000 đ → Ghi nhận giao dịch
-4. Số dư được cập nhật tự động
-
-#### 7. Xem Thông Tin Thẻ
-
-1. Chọn khách hàng
-2. Click nút **"Quản lý Smart Card"**
-3. Xem thông tin trong tab **"Thông tin"**
-4. Xem lịch sử giao dịch trong tab **"Giao dịch"**
-5. Đổi PIN trong tab **"Đổi PIN"**
+Các script bổ trợ:
+- `build-applet.bat`: build CAP nhanh.
+- `start-system.bat`: khởi động đồng thời mô phỏng smart card + desktop (tuỳ chỉnh).
 
 ---
 
-## 🏗️ Kiến Trúc Hệ Thống
+## Lược Đồ CSDL
+- **customers:** thông tin cá nhân, loại vé, card_id, PIN mã hóa, ảnh (BLOB), số dư, ngày hết hạn.
+- **transactions:** lịch sử nạp tiền, gia hạn, quẹt, gồm số dư trước/sau và mô tả giao dịch.
+- **route_history:** lưu hành trình, tuyến, điểm lên/xuống để hỗ trợ thống kê và xác thực vé.
 
-```
-┌─────────────────────────────────────┐
-│      Compose Desktop UI             │
-│   (Kotlin + Jetpack Compose)        │
-├─────────────────────────────────────┤
-│      Business Logic Layer           │
-│   - BusCardManager (Kotlin)         │
-│   - DatabaseManager (Kotlin)        │
-├─────────────────────────────────────┤
-│      Smart Card Client               │
-│   - BusSmartCard (Java)              │
-│   - APDU Communication              │
-├─────────────────────────────────────┤
-│      Java Card                        │
-│   - BusCardApplet (Java Card)        │
-│   - JCIDE Simulator / PC/SC Reader   │
-└─────────────────────────────────────┘
-```
-
-### Luồng Dữ Liệu
-
-1. **UI Layer:** Compose Desktop nhận input từ người dùng
-2. **Business Logic:** BusCardManager xử lý logic nghiệp vụ
-3. **Smart Card Client:** BusSmartCard gửi APDU commands
-4. **Java Card:** BusCardApplet xử lý và trả về response
-5. **Database:** DatabaseManager lưu trữ dữ liệu SQLite
+File schema mẫu: `db/schema_sqlite.sql`.
 
 ---
 
-## 📁 Cấu Trúc Dự Án
-
-```
-KmpUiSmartCard/
-├── src/
-│   ├── main/
-│   │   ├── kotlin/
-│   │   │   ├── Main.kt                    # Entry point
-│   │   │   ├── MainApp.kt                 # Main UI application
-│   │   │   ├── models/                    # Data models
-│   │   │   │   ├── Customer.kt           # Customer model
-│   │   │   │   ├── Transaction.kt        # Transaction model
-│   │   │   │   └── Trip.kt               # Trip model
-│   │   │   ├── database/                 # Database layer
-│   │   │   │   └── DatabaseManager.kt    # SQLite operations
-│   │   │   ├── smartcard/                # Smart Card layer
-│   │   │   │   └── BusCardManager.kt     # Smart Card operations
-│   │   │   ├── security/                 # Security utilities
-│   │   │   │   └── SecurityUtils.kt    # PIN encryption
-│   │   │   └── ui/
-│   │   │       ├── screens/              # UI screens
-│   │   │       │   ├── LoadCardInfoScreen.kt
-│   │   │       │   ├── CustomerInfoScreen.kt
-│   │   │       │   ├── PaymentScreen.kt
-│   │   │       │   ├── RouteScreen.kt
-│   │   │       │   ├── SmartCardManagementScreen.kt
-│   │   │       │   ├── RealTimeTapScreen.kt
-│   │   │       │   ├── TicketValidationScreen.kt
-│   │   │       │   ├── AutoDeductionScreen.kt
-│   │   │       │   ├── ChangePinDialog.kt
-│   │   │       │   └── PinVerificationDialog.kt
-│   │   │       └── components/          # Reusable UI components
-│   │   │           └── CommonComponents.kt
-│   │   └── java/
-│   │       └── com/buscardmanagement/
-│   │           ├── client/               # Smart Card client
-│   │           │   ├── BusSmartCard.java
-│   │           │   └── util/
-│   │           │       └── HelpMethod.java
-│   │           └── applet/               # Java Card Applet
-│   │               └── BusCardApplet.java
-│   └── test/                            # Test files
-├── db/                                  # Database schemas
-│   ├── schema.sql
-│   └── schema_sqlite.sql
-├── build.gradle.kts                     # Build configuration
-├── settings.gradle.kts                  # Project settings
-├── gradle.properties                    # Gradle properties
-├── CHANGELOG.md                         # Changelog
-└── README.md                            # This file
-```
+## Quy Tắc Vé
+- **Vé thường (NORMAL):** trừ 7.000đ/lượt, yêu cầu số dư >= 7.000đ trước khi quẹt.
+- **Vé tháng (MONTHLY):** phí 100.000đ/tháng, miễn phí khi quẹt trong thời gian còn hạn, tự động chuyển về vé thường khi hết hạn.
+- **Gia hạn:** hệ thống trừ trước số dư cần thiết, cập nhật expiry date và đồng bộ lại lên thẻ.
 
 ---
 
-## 🛠️ Công Nghệ Sử Dụng
-
-### Frontend
-- **Kotlin** 1.9+ - Ngôn ngữ lập trình chính
-- **Jetpack Compose Desktop** 1.6.0 - Framework UI hiện đại
-- **Material Design** - Design system với animations
-- **Kotlin Coroutines** - Xử lý bất đồng bộ
-
-### Backend & Database
-- **SQLite** - Database nhẹ, nhúng
-- **SQLite JDBC** 3.45.0.0 - Driver kết nối database
-
-### Smart Card
-- **Java Card Applet** - BusCardApplet chạy trên Java Card
-- **Java Smart Card I/O** - Giao tiếp với thẻ thông qua APDU và PC/SC reader
-- **JCIDE** - Java Card Integrated Development Environment (để build và test applet)
-
-### Utilities
-- **SLF4J** 2.0.9 + **Logback** 1.4.11 - Logging
-- **Gson** 2.10.1 - JSON processing (nếu cần)
-
-### Build Tools
-- **Gradle** 8.0+ - Build system
-- **Kotlin JVM Toolchain** 21 - Compiler toolchain
+## Ghi Chú Phát Triển
+- Compose Desktop đã bật animation và hiệu ứng glassmorphism, máy cấu hình thấp có thể tắt bớt ở `ui/DesignSystem.kt`.
+- `BusCardApplet_fixed.java` và `BusCardApplet_clean.java` dùng làm tài liệu so sánh/debug nếu cần refactor.
+- Có thể thay thế SQLite bằng server từ xa bằng cách hiện thực lại `DatabaseManager`.
 
 ---
 
-## 🗄️ Database Schema
+## License
 
-### Bảng `customers`
-
-| Cột | Kiểu | Mô tả |
-|-----|------|-------|
-| `id` | TEXT PRIMARY KEY | ID khách hàng (UUID) |
-| `full_name` | TEXT | Họ và tên |
-| `cccd` | TEXT | Số CCCD/CMND |
-| `date_of_birth` | TEXT | Ngày sinh (YYYY-MM-DD) |
-| `address` | TEXT | Địa chỉ |
-| `phone` | TEXT | Số điện thoại |
-| `customer_type` | TEXT | Loại khách hàng (STUDENT/ELDERLY/NORMAL) |
-| `card_type` | TEXT | Loại thẻ (NORMAL/MONTHLY) |
-| `expiry_date` | TEXT | Ngày hết hạn (YYYY-MM-DD) |
-| `balance` | REAL | Số dư (VND) |
-| `card_id` | TEXT UNIQUE | Card ID trên thẻ |
-| `pin` | TEXT | PIN đã mã hóa |
-| `photo_bytes` | BLOB | Ảnh đại diện (đã nén) |
-
-### Bảng `transactions`
-
-| Cột | Kiểu | Mô tả |
-|-----|------|-------|
-| `id` | INTEGER PRIMARY KEY AUTOINCREMENT | ID giao dịch |
-| `card_id` | TEXT | Card ID (Foreign Key) |
-| `transaction_type` | TEXT | Loại giao dịch (TOP_UP/DEDUCTION/EXTEND_MONTHLY/TAP/ROUTE_TRANSFER) |
-| `amount` | REAL | Số tiền |
-| `balance_before` | REAL | Số dư trước giao dịch |
-| `balance_after` | REAL | Số dư sau giao dịch |
-| `description` | TEXT | Mô tả giao dịch |
-| `timestamp` | TEXT | Thời gian (ISO 8601) |
-
-### Bảng `route_history`
-
-| Cột | Kiểu | Mô tả |
-|-----|------|-------|
-| `id` | INTEGER PRIMARY KEY AUTOINCREMENT | ID bản ghi |
-| `card_id` | TEXT | Card ID (Foreign Key) |
-| `route_name` | TEXT | Tên tuyến |
-| `start_point` | TEXT | Điểm đi |
-| `end_point` | TEXT | Điểm đến |
-| `timestamp` | TEXT | Thời gian chuyển tuyến (ISO 8601) |
+MIT License © 2025 – được phép sử dụng cho mục đích học tập và triển khai thực tế.
 
 ---
 
-## 🎫 Quy Tắc Vé Xe Buýt Hà Nội
-
-### Vé Thường (NORMAL)
-- **Giá:** 7,000 đ/lượt
-- **Cách dùng:** Trừ tiền mỗi khi quẹt thẻ
-- **Điều kiện:** Số dư ≥ 7,000 đ
-- **Hết tiền:** ❌ Không thể quẹt thẻ
-
-### Vé Tháng (MONTHLY)
-- **Giá:** 100,000 đ/tháng
-- **Cách dùng:** Không trừ tiền khi quẹt thẻ
-- **Điều kiện:** Còn hạn (ngày hiện tại ≤ ngày hết hạn)
-- **Hết hạn:** ❌ Không thể quẹt thẻ (cần gia hạn)
-
-### Chuyển Tuyến
-- Chọn tuyến mới và điểm đi/đến
-- Lưu lịch sử chuyển tuyến
-- Mở Google Maps để xem tuyến đường
-
----
-
-## 🐛 Xử Lý Lỗi
-
-### Không Kết Nối Được Java Card
-
-**Triệu chứng:** Lỗi khi kết nối với thẻ
-
-**Giải pháp:**
-1. Đảm bảo JCIDE Simulator đang chạy và applet đã được cài đặt
-2. Hoặc kiểm tra Java Card thật đã được cắm vào PC/SC reader
-3. Kiểm tra driver PC/SC đã được cài đặt (Windows Smart Card service)
-4. Chạy lại wizard "Nạp thông tin vào thẻ"
-
-### Thẻ Chưa Được Khởi Tạo
-
-**Triệu chứng:** Lỗi khi đọc thông tin từ thẻ
-
-**Giải pháp:**
-1. Chạy lại wizard "Nạp thông tin vào thẻ"
-2. Đảm bảo Java Card đã được kết nối
-3. Kiểm tra applet đã được cài đặt trên card
-
-### Build Lỗi
-
-```bash
-# Clean và build lại
-.\gradlew.bat clean build
-
-# Hoặc chỉ clean
-.\gradlew.bat clean
-```
-
-### Lỗi Java Version
-
-**Triệu chứng:** Lỗi "Unsupported class file major version"
-
-**Giải pháp:**
-- Đảm bảo đang sử dụng Java 21
-- Kiểm tra: `java -version`
-- Cập nhật JAVA_HOME nếu cần
-
-### Database Locked
-
-**Triệu chứng:** Lỗi "database is locked"
-
-**Giải pháp:**
-- Đóng tất cả kết nối database
-- Khởi động lại ứng dụng
-- Kiểm tra file `bus_card_management.db` không bị mở bởi ứng dụng khác
-
----
-
-## 👨‍💻 Phát Triển
-
-### Build Project
-
-```bash
-# Build
-.\gradlew.bat build
-
-# Clean build
-.\gradlew.bat clean build
-
-# Run tests
-.\gradlew.bat test
-```
-
-### Chạy Ứng dụng
-
-```bash
-.\gradlew.bat run
-```
-
-### Tạo Distribution
-
-```bash
-# Tạo package cho hệ điều hành hiện tại
-.\gradlew.bat packageDistributionForCurrentOS
-
-# Tạo package cho tất cả platforms
-.\gradlew.bat packageDistributionForAllPlatforms
-```
-
-### Cấu Trúc Code
-
-- **Models:** Định nghĩa data classes (`Customer`, `Transaction`, `Trip`)
-- **Database:** Tất cả operations với SQLite (`DatabaseManager`)
-- **Smart Card:** Wrapper cho Smart Card operations (`BusCardManager`)
-- **UI Screens:** Các màn hình Compose (`LoadCardInfoScreen`, `PaymentScreen`, ...)
-- **UI Components:** Components tái sử dụng (`CustomCard`, `CustomDropdown`, ...)
-
-### Coding Standards
-
-- Sử dụng Kotlin coding conventions
-- Tên biến và hàm bằng tiếng Việt có dấu cho UI
-- Comment code phức tạp
-- Xử lý exception đầy đủ
-- Sử dụng Coroutines cho async operations
-
----
-
-## 📝 Changelog
-
-Xem [CHANGELOG.md](CHANGELOG.md) để biết chi tiết các thay đổi.
-
-### Phiên Bản Hiện Tại: 1.0-SNAPSHOT
-
-**Tính năng chính:**
-- ✅ Quản lý khách hàng đầy đủ
-- ✅ Nạp thông tin vào thẻ (Wizard 4 bước)
-- ✅ Nạp tiền và gia hạn vé tháng
-- ✅ Chuyển tuyến với Google Maps
-- ✅ Quẹt thẻ tự động real-time
-- ✅ Quản lý Smart Card với đổi PIN
-- ✅ Xác thực vé
-- ✅ Trừ tiền tự động
-
----
-
-## 📄 License
-
-MIT License
-
-Copyright (c) 2025 Bus Card Management System
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-
----
-
-## 🙏 Acknowledgments
-
-- **JetBrains** - Kotlin và Compose Desktop
-- **JCIDE** - Java Card Integrated Development Environment
-- **SQLite** - Database engine
-- **Material Design** - Design system
-
----
-
-**Built with ❤️ using Kotlin & Jetpack Compose Desktop**
+**Made with ❤️ Kotlin + Java Card**

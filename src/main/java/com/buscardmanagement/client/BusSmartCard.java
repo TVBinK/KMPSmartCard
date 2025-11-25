@@ -424,7 +424,7 @@ public class BusSmartCard {
      * Cập nhật thông tin khách hàng lên thẻ
      * 
      * @param hoTen Họ tên khách hàng
-     * @param loaiDoiTuong Loại đối tượng (HSSV/Người cao tuổi/Thông thường)
+     * @param loaiDoiTuong Loại đối tượng (khách hàng)
      * @param ngayHetHan Ngày hết hạn (dd/MM/yyyy)
      * @param loaiThe Loại thẻ (Vé Lượt/Vé Tháng)
      * @param linkedCustomerId Mã khách hàng liên kết (optional)

@@ -487,7 +487,7 @@ object BusCardManager {
  */
 data class CustomerInfo(
     val fullName: String,
-    val customerType: String,    // HSSV, Người cao tuổi, Thông thường
+    val customerType: String,    // Khách hàng
     val expiryDate: String,       // dd/MM/yyyy
     val cardType: String,         // Thẻ Thường, Vé Tháng
     val linkedCustomerId: String
