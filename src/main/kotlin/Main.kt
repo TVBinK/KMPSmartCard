@@ -3,7 +3,8 @@ import androidx.compose.ui.window.WindowPlacement
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import androidx.compose.ui.unit.dp
-import database.DatabaseManager
+import core.database.DatabaseManager
+import feature.main.MainApp
 
 /**
  * Entry point của ứng dụng

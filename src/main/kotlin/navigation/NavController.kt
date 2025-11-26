@@ -1,6 +1,7 @@
 package navigation
 
 import androidx.compose.runtime.*
+import core.model.Customer
 
 /**
  * Navigation Controller để quản lý navigation giữa các màn hình
@@ -57,9 +58,9 @@ sealed class Screen(val route: String, val title: String) {
     object SmartCardManagement : Screen("smart_card", "Quản lý Smart Card")
     object RealTimeTap : Screen("real_time_tap", "Quẹt thẻ tự động")
     
-    data class CustomerCardInfo(val customer: models.Customer) : Screen("customer_card_info", "Thông tin thẻ")
-    data class EditCustomer(val customer: models.Customer) : Screen("edit_customer", "Sửa thông tin khách hàng")
-    data class DeleteConfirm(val customer: models.Customer) : Screen("delete_confirm", "Xác nhận xóa")
-    data class TicketValidation(val customer: models.Customer) : Screen("ticket_validation", "Xác thực vé")
+    data class CustomerCardInfo(val customer: Customer) : Screen("customer_card_info", "Thông tin thẻ")
+    data class EditCustomer(val customer: Customer) : Screen("edit_customer", "Sửa thông tin khách hàng")
+    data class DeleteConfirm(val customer: Customer) : Screen("delete_confirm", "Xác nhận xóa")
+    data class TicketValidation(val customer: Customer) : Screen("ticket_validation", "Xác thực vé")
 }
 

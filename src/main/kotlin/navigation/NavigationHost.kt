@@ -1,14 +1,19 @@
 package navigation
 
 import androidx.compose.runtime.*
-import models.Customer
-import models.ExtensionRequest
-import models.TapType
-import ui.dialogs.CustomerCardInfoDialog
-import ui.dialogs.DeleteConfirmDialog
-import ui.dialogs.EditCustomerDialog
-import ui.screens.*
-import ui.screens.loadcard.LoadCardInfoDialog
+import feature.loadcard.LoadCardInfoDialog
+import feature.payment.PaymentDialog
+import feature.realtimetap.RealTimeTapDialog
+import feature.route.RouteDialog
+import feature.smartcard.SmartCardManagementDialog
+import feature.ticketvalidation.TicketValidationDialog
+import core.model.Customer
+import core.model.ExtensionRequest
+import core.model.TapType
+import core.ui.dialogs.CustomerCardInfoDialog
+import core.ui.dialogs.DeleteConfirmDialog
+import core.ui.dialogs.EditCustomerDialog
+
 
 /**
  * Navigation Host - Quản lý việc hiển thị các screen dựa trên current screen
