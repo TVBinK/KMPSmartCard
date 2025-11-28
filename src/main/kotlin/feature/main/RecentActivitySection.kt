@@ -1,4 +1,4 @@
-package core.ui.components.main
+package feature.main
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*

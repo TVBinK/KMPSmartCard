@@ -5,7 +5,7 @@ import feature.loadcard.LoadCardInfoDialog
 import feature.payment.PaymentDialog
 import feature.realtimetap.RealTimeTapDialog
 import feature.route.RouteDialog
-import feature.smartcard.SmartCardManagementDialog
+import feature.readcard.ReadSmartCardDialog
 import feature.ticketvalidation.TicketValidationDialog
 import core.model.Customer
 import core.model.ExtensionRequest
@@ -26,7 +26,8 @@ fun NavigationHost(
     onCustomerDeleted: (Customer) -> Unit,
     onTopUpCompleted: (String, Double) -> Unit,
     onTapDetected: (String, TapType) -> Unit,
-    onExtensionRequest: (ExtensionRequest) -> Unit
+    onExtensionRequest: (ExtensionRequest) -> Unit,
+    onCardDataWritten: () -> Unit = {}
 ) {
     // selectedCustomer, isCardConnected, isCardHasData được truyền vào nhưng chưa sử dụng
     // Có thể dùng trong tương lai để enable/disable các tính năng
@@ -45,6 +46,7 @@ fun NavigationHost(
                 },
                 onSuccess = { customer ->
                     onCustomerUpdated()
+                    onCardDataWritten() // Refresh trạng thái thẻ sau khi ghi thành công
                     navController.navigateBack()
                 }
             )
@@ -71,7 +73,7 @@ fun NavigationHost(
         }
         
         is Screen.SmartCardManagement -> {
-            SmartCardManagementDialog(
+            ReadSmartCardDialog(
                 onDismiss = { navController.navigateBack() }
             )
         }

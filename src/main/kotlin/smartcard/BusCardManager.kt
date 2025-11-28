@@ -52,15 +52,26 @@ object BusCardManager {
     fun getCustomerInfo(): Result<CustomerInfo> = executeSafe("Đọc thông tin khách hàng") {
         val info = smartCard.customerInfo
         if (info != null && info.size >= 5) {
-            Result.success(CustomerInfo(
-                fullName = info.getOrNull(0) ?: "",
-                customerType = info.getOrNull(1) ?: "",
-                expiryDate = info.getOrNull(2) ?: "",
-                cardType = info.getOrNull(3) ?: "",
-                linkedCustomerId = info.getOrNull(4) ?: ""
-            ))
+            Result.success(
+                CustomerInfo(
+                    fullName = info.getOrNull(0) ?: "",
+                    customerType = info.getOrNull(1) ?: "",
+                    expiryDate = info.getOrNull(2) ?: "",
+                    cardType = info.getOrNull(3) ?: "",
+                    linkedCustomerId = info.getOrNull(4) ?: "",
+                    cccd = info.getOrNull(5) ?: "",
+                    dob = info.getOrNull(6) ?: "",
+                    address = info.getOrNull(7) ?: "",
+                    phone = info.getOrNull(8) ?: ""
+                )
+            )
         } else {
-            Result.failure(Exception("Không thể đọc thông tin khách hàng từ thẻ"))
+            val message = if (BusSmartCard.isCardBlocked) {
+                "Thẻ đã bị khóa do nhập sai PIN quá nhiều lần. Vui lòng mở khóa thẻ trước khi đọc."
+            } else {
+                "Không thể đọc thông tin khách hàng từ thẻ"
+            }
+            Result.failure(Exception(message))
         }
     }
     
@@ -72,9 +83,16 @@ object BusCardManager {
         customerType: String,
         expiryDate: String,
         cardType: String,
-        linkedCustomerId: String = ""
+        linkedCustomerId: String = "",
+        cccd: String = "",
+        dob: String = "",
+        address: String = "",
+        phone: String = ""
     ): Result<Boolean> = executeSafe("Cập nhật thông tin khách hàng") {
-        val result = smartCard.updateCustomerInfo(fullName, customerType, expiryDate, cardType, linkedCustomerId)
+        val result = smartCard.updateCustomerInfo(
+            fullName, customerType, expiryDate, cardType, linkedCustomerId,
+            cccd, dob, address, phone
+        )
         if (result) Result.success(true) else Result.failure(Exception("Không thể cập nhật thông tin khách hàng"))
     }
     
@@ -88,7 +106,12 @@ object BusCardManager {
         if (cardIdArray != null && cardIdArray.isNotEmpty()) {
             Result.success(cardIdArray[0])
         } else {
-            Result.failure(Exception("Không thể đọc Card ID"))
+            val message = if (BusSmartCard.isCardBlocked) {
+                "Thẻ đã bị khóa do nhập sai PIN quá nhiều lần. Vui lòng mở khóa thẻ trước khi đọc."
+            } else {
+                "Không thể đọc Card ID"
+            }
+            Result.failure(Exception(message))
         }
     }
     
@@ -108,19 +131,44 @@ object BusCardManager {
     /**
      * Cập nhật PIN
      */
-    fun updatePin(newPin: String): Result<Boolean> {
-        return try {
-            if (newPin.length < 4) {
-                return Result.failure(Exception("PIN phải có ít nhất 4 ký tự"))
+    fun updatePin(oldPin: String, newPin: String): Result<Boolean> {
+        return executeSafe("Cập nhật PIN") {
+            // Kiểm tra thẻ có bị khóa không (trừ khi tạo PIN lần đầu)
+            if (isCardBlocked && oldPin.isNotEmpty()) {
+                return Result.failure(Exception("Thẻ đã bị khóa do nhập sai PIN quá nhiều lần. Vui lòng mở khóa thẻ trước."))
             }
-            val result = smartCard.updatePin(newPin)
+            
+            // Validation cho PIN mới
+            if (newPin.length < 4 || newPin.length > 6) {
+                return Result.failure(Exception("PIN mới phải có từ 4-6 chữ số"))
+            }
+            
+            // Validation cho đổi PIN (không áp dụng cho tạo PIN lần đầu)
+            if (oldPin.isNotEmpty()) {
+                if (oldPin == newPin) {
+                    return Result.failure(Exception("PIN mới không được trùng với PIN hiện tại"))
+                }
+            }
+            
+            val result = smartCard.updatePin(oldPin, newPin)
             if (result) {
                 Result.success(true)
             } else {
-                Result.failure(Exception("Không thể cập nhật PIN"))
+                // Kiểm tra lại trạng thái thẻ sau khi update
+                val errorMsg = if (isCardBlocked) {
+                    "Thẻ đã bị khóa do nhập sai PIN hiện tại quá nhiều lần"
+                } else if (oldPin.isNotEmpty()) {
+                    val remaining = 4 - pinAttempts
+                    if (remaining > 0) {
+                        "PIN hiện tại không đúng. Còn $remaining lần thử trước khi bị khóa"
+                    } else {
+                        "PIN hiện tại không đúng"
+                    }
+                } else {
+                    "Không thể tạo PIN"
+                }
+                Result.failure(Exception(errorMsg))
             }
-        } catch (e: Exception) {
-            Result.failure(Exception("Lỗi cập nhật PIN: ${e.message}", e))
         }
     }
     
@@ -235,6 +283,23 @@ object BusCardManager {
         }
     }
     
+    // ========== ẢNH ==========
+    
+    /**
+     * Đọc ảnh khách hàng từ thẻ
+     * Trả về Result.success với ByteArray nếu có ảnh, hoặc Result.failure nếu lỗi
+     * Lưu ý: Nếu thẻ chưa có ảnh, sẽ trả về Result.failure với message phù hợp
+     */
+    fun getPicture(): Result<ByteArray> = executeSafe("Đọc ảnh khách hàng") {
+        val pictureBytes = smartCard.getPicture()
+        if (pictureBytes != null && pictureBytes.isNotEmpty()) {
+            Result.success(pictureBytes)
+        } else {
+            // Thẻ chưa có ảnh hoặc không thể đọc - không phải lỗi nghiêm trọng
+            Result.failure(Exception("Thẻ chưa có ảnh hoặc không thể đọc ảnh"))
+        }
+    }
+    
     // ========== BẢO MẬT ==========
     
     /**
@@ -313,6 +378,17 @@ object BusCardManager {
             Result.failure(Exception("Lỗi xóa thẻ: ${e.message}", e))
         }
     }
+    
+    /**
+     * Mở khóa thẻ khi bị nhập sai PIN quá nhiều lần
+     */
+    fun unlockCard(): Result<Boolean> = executeSafe("Mở khóa thẻ") {
+        if (smartCard.unlockCard()) {
+            Result.success(true)
+        } else {
+            Result.failure(Exception("Không thể mở khóa thẻ"))
+        }
+    }
 }
 
 /**
@@ -323,7 +399,11 @@ data class CustomerInfo(
     val customerType: String,    // Khách hàng
     val expiryDate: String,       // dd/MM/yyyy
     val cardType: String,         // Thẻ Thường, Vé Tháng
-    val linkedCustomerId: String
+    val linkedCustomerId: String,
+    val cccd: String = "",         // Số CCCD
+    val dob: String = "",          // Ngày sinh (dd/MM/yyyy)
+    val address: String = "",      // Địa chỉ
+    val phone: String = ""         // Số điện thoại
 )
 
 /**

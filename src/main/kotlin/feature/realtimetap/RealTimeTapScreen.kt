@@ -24,7 +24,6 @@ import core.model.TapType
 import core.ui.components.CustomCard
 import core.ui.components.CustomDivider
 import java.time.format.DateTimeFormatter
-import ui.components.*
 
 /**
  * Màn hình Quẹt thẻ thực tế - Tự động phát hiện khi có thẻ
@@ -36,19 +35,19 @@ fun RealTimeTapDialog(
     onTapDetected: (String, TapType) -> Unit
 ) {
     // Khởi tạo ViewModel
-    val viewModel = remember { RealTimeTapViewModel(onTapDetected) }
-    val state by viewModel.state.collectAsState()
+    val realTimeTapViewModel = remember { RealTimeTapViewModel(onTapDetected) }
+    val state by realTimeTapViewModel.state.collectAsState()
     
     // Cleanup
     DisposableEffect(Unit) {
         onDispose {
-            viewModel.onCleared()
+            realTimeTapViewModel.onCleared()
         }
     }
     
     Dialog(
         onDismissRequest = {
-            viewModel.stopPolling()
+            realTimeTapViewModel.stopPolling()
             onDismiss()
         },
         properties = DialogProperties(dismissOnBackPress = true, dismissOnClickOutside = false)
@@ -75,7 +74,7 @@ fun RealTimeTapDialog(
                     )
                     
                     IconButton(onClick = {
-                        viewModel.stopPolling()
+                        realTimeTapViewModel.stopPolling()
                         onDismiss()
                     }) {
                         Icon(Icons.Default.Close, contentDescription = "Đóng")
@@ -224,29 +223,6 @@ fun RealTimeTapDialog(
                             fontStyle = FontStyle.Italic
                         )
                     }
-                }
-                
-                Spacer(modifier = Modifier.height(16.dp))
-                
-                // Toggle listening
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = if (state.isListening) "Đang lắng nghe..." else "Đã tạm dừng",
-                        fontSize = 14.sp,
-                        color = if (state.isListening) Color(0xFF4CAF50) else Color.Gray
-                    )
-                    
-                    Switch(
-                        checked = state.isListening,
-                        onCheckedChange = { viewModel.toggleListening() },
-                        colors = SwitchDefaults.colors(
-                            checkedThumbColor = Color(0xFF4CAF50)
-                        )
-                    )
                 }
             }
         }

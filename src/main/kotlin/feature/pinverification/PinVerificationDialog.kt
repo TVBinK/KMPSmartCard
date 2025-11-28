@@ -31,19 +31,19 @@ fun PinVerificationDialog(
     title: String = "Xác thực mã PIN"
 ) {
     // Khởi tạo ViewModel
-    val viewModel = remember { 
+    val pinVerificationViewModel = remember { 
         PinVerificationViewModel(
             maxAttempts = maxAttempts,
             onVerified = onVerified
         )
     }
-    val state by viewModel.state.collectAsState()
+    val state by pinVerificationViewModel.state.collectAsState()
     val coroutineScope = rememberCoroutineScope()
     
     // Cleanup
     DisposableEffect(Unit) {
         onDispose {
-            viewModel.onCleared()
+            pinVerificationViewModel.onCleared()
         }
     }
     
@@ -152,11 +152,11 @@ fun PinVerificationDialog(
                     // PIN Input
                     OutlinedTextField(
                         value = state.pin,
-                        onValueChange = { viewModel.updatePin(it) },
+                        onValueChange = { pinVerificationViewModel.updatePin(it) },
                         label = { Text("Mã PIN") },
                         leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null) },
                         trailingIcon = {
-                            IconButton(onClick = { viewModel.togglePinVisibility() }) {
+                            IconButton(onClick = { pinVerificationViewModel.togglePinVisibility() }) {
                                 Text(
                                     text = if (state.pinVisible) "Ẩn" else "Hiện",
                                     fontSize = 12.sp,
@@ -232,7 +232,7 @@ fun PinVerificationDialog(
                         Button(
                             onClick = {
                                 coroutineScope.launch {
-                                    viewModel.verifyPin()
+                                    pinVerificationViewModel.verifyPin()
                                 }
                             },
                             modifier = Modifier

@@ -25,14 +25,21 @@ fun ChangePinDialog(
     onSuccess: () -> Unit
 ) {
     // Khởi tạo ViewModel
-    val viewModel = remember { ChangePinViewModel(onSuccess) }
-    val state by viewModel.state.collectAsState()
+    val changePinViewModel = remember { ChangePinViewModel(onSuccess) }
+    val state by changePinViewModel.state.collectAsState()
     val coroutineScope = rememberCoroutineScope()
+    
+    // Tự động đóng dialog khi thẻ bị khóa
+    LaunchedEffect(state.isCardBlocked) {
+        if (state.isCardBlocked) {
+            onDismiss()
+        }
+    }
     
     // Cleanup
     DisposableEffect(Unit) {
         onDispose {
-            viewModel.onCleared()
+            changePinViewModel.onCleared()
         }
     }
     
@@ -134,11 +141,11 @@ fun ChangePinDialog(
                         // PIN hiện tại
                         OutlinedTextField(
                             value = state.currentPin,
-                            onValueChange = { viewModel.updateCurrentPin(it) },
+                            onValueChange = { changePinViewModel.updateCurrentPin(it) },
                             label = { Text("Mã PIN hiện tại *") },
                             leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null) },
                             trailingIcon = {
-                                IconButton(onClick = { viewModel.toggleCurrentPinVisibility() }) {
+                                IconButton(onClick = { changePinViewModel.toggleCurrentPinVisibility() }) {
                                     Text(
                                         text = if (state.currentPinVisible) "Ẩn" else "Hiện",
                                         fontSize = 12.sp,
@@ -156,11 +163,11 @@ fun ChangePinDialog(
                         // PIN mới
                         OutlinedTextField(
                             value = state.newPin,
-                            onValueChange = { viewModel.updateNewPin(it) },
+                            onValueChange = { changePinViewModel.updateNewPin(it) },
                             label = { Text("Mã PIN mới (4-6 số) *") },
                             leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null) },
                             trailingIcon = {
-                                IconButton(onClick = { viewModel.toggleNewPinVisibility() }) {
+                                IconButton(onClick = { changePinViewModel.toggleNewPinVisibility() }) {
                                     Text(
                                         text = if (state.newPinVisible) "Ẩn" else "Hiện",
                                         fontSize = 12.sp,
@@ -178,11 +185,11 @@ fun ChangePinDialog(
                         // Xác nhận PIN mới
                         OutlinedTextField(
                             value = state.confirmPin,
-                            onValueChange = { viewModel.updateConfirmPin(it) },
+                            onValueChange = { changePinViewModel.updateConfirmPin(it) },
                             label = { Text("Xác nhận PIN mới *") },
                             leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null) },
                             trailingIcon = {
-                                IconButton(onClick = { viewModel.toggleConfirmPinVisibility() }) {
+                                IconButton(onClick = { changePinViewModel.toggleConfirmPinVisibility() }) {
                                     Text(
                                         text = if (state.confirmPinVisible) "Ẩn" else "Hiện",
                                         fontSize = 12.sp,
@@ -201,25 +208,28 @@ fun ChangePinDialog(
                         if (state.errorMessage.isNotEmpty()) {
                             Card(
                                 modifier = Modifier.fillMaxWidth(),
-                                backgroundColor = Color(0xFFFFEBEE),
+                                backgroundColor = if (state.isCardBlocked) Color(0xFFFFCDD2) else Color(0xFFFFEBEE),
                                 elevation = 0.dp
                             ) {
-                                Row(
-                                    modifier = Modifier.padding(12.dp),
-                                    verticalAlignment = Alignment.CenterVertically
+                                Column(
+                                    modifier = Modifier.padding(12.dp)
                                 ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Warning,
-                                        contentDescription = null,
-                                        tint = Color(0xFFF44336),
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text(
-                                        text = state.errorMessage,
-                                        fontSize = 12.sp,
-                                        color = Color(0xFFF44336)
-                                    )
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Warning,
+                                            contentDescription = null,
+                                            tint = if (state.isCardBlocked) Color(0xFFD32F2F) else Color(0xFFF44336),
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text(
+                                            text = state.errorMessage,
+                                            fontSize = 12.sp,
+                                            color = Color(0xFFF44336)
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -280,7 +290,7 @@ fun ChangePinDialog(
                         Button(
                             onClick = {
                                 coroutineScope.launch {
-                                    viewModel.changePin()
+                                    changePinViewModel.changePin()
                                 }
                             },
                             modifier = Modifier

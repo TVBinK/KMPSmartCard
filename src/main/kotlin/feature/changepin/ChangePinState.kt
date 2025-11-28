@@ -12,6 +12,8 @@ data class ChangePinState(
     val isLoading: Boolean = false,
     val currentPinVisible: Boolean = false,
     val newPinVisible: Boolean = false,
-    val confirmPinVisible: Boolean = false
+    val confirmPinVisible: Boolean = false,
+    val attemptsRemaining: Int = 4,
+    val isCardBlocked: Boolean = false
 )
 

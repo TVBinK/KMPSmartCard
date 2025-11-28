@@ -36,14 +36,14 @@ fun PaymentDialog(
     onExtension: (ExtensionRequest) -> Unit
 ) {
     // Khởi tạo ViewModel
-    val viewModel = remember { PaymentViewModel(customers) }
-    val state by viewModel.state.collectAsState()
+    val paymentViewModel = remember { PaymentViewModel(customers) }
+    val state by paymentViewModel.state.collectAsState()
     val coroutineScope = rememberCoroutineScope()
     
     // Cleanup
     DisposableEffect(Unit) {
         onDispose {
-            viewModel.onCleared()
+            paymentViewModel.onCleared()
         }
     }
     
@@ -69,12 +69,12 @@ fun PaymentDialog(
             ) {
                 Tab(
                     selected = state.selectedTab == 0,
-                    onClick = { viewModel.selectTab(0) },
+                    onClick = { paymentViewModel.selectTab(0) },
                     text = { Text("Nạp tiền", fontWeight = FontWeight.Bold) }
                 )
                 Tab(
                     selected = state.selectedTab == 1,
-                    onClick = { viewModel.selectTab(1) },
+                    onClick = { paymentViewModel.selectTab(1) },
                     text = { Text("Mua vé tháng / Gia hạn vé tháng", fontWeight = FontWeight.Bold) }
                 )
             }
@@ -84,7 +84,7 @@ fun PaymentDialog(
             // Tab Content
             when (state.selectedTab) {
                 0 -> TopUpTab(
-                    viewModel = viewModel,
+                    paymentViewModel = paymentViewModel,
                     state = state.topUpState,
                     customers = customers,
                     onTopUp = { cardId, amount ->
@@ -94,7 +94,7 @@ fun PaymentDialog(
                     coroutineScope = coroutineScope
                 )
                 1 -> ExtensionTab(
-                    viewModel = viewModel,
+                    paymentViewModel = paymentViewModel,
                     state = state.extensionState,
                     customers = customers,
                     onExtension = { request ->
@@ -112,14 +112,14 @@ fun PaymentDialog(
  */
 @Composable
 fun ColumnScope.TopUpTab(
-    viewModel: PaymentViewModel,
+    paymentViewModel: PaymentViewModel,
     state: TopUpState,
     customers: List<Customer>,
     onTopUp: (String, Double) -> Unit,
     coroutineScope: CoroutineScope
 ) {
     val filteredCustomers = remember(state.cardId, customers) {
-        viewModel.getFilteredCustomers(state.cardId, isTopUp = true)
+        paymentViewModel.getFilteredCustomers(state.cardId, isTopUp = true)
     }
     
     Column(
@@ -141,7 +141,7 @@ fun ColumnScope.TopUpTab(
             CustomTextField(
                 label = "Card ID",
                 value = state.cardId,
-                onValueChange = { viewModel.updateTopUpCardId(it) },
+                onValueChange = { paymentViewModel.updateTopUpCardId(it) },
                 modifier = Modifier.fillMaxWidth(),
                 placeholder = "Nhập Card ID hoặc tên khách hàng"
             )
@@ -164,7 +164,7 @@ fun ColumnScope.TopUpTab(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clickable {
-                                        viewModel.selectTopUpCustomer(customer)
+                                        paymentViewModel.selectTopUpCustomer(customer)
                                     }
                                     .padding(12.dp)
                             ) {
@@ -238,7 +238,7 @@ fun ColumnScope.TopUpTab(
         CustomTextField(
             label = "Nhập số tiền (VNĐ)",
             value = state.topUpAmount,
-            onValueChange = { viewModel.updateTopUpAmount(it) },
+            onValueChange = { paymentViewModel.updateTopUpAmount(it) },
             modifier = Modifier.fillMaxWidth(),
             placeholder = "Ví dụ: 100000"
         )
@@ -254,9 +254,9 @@ fun ColumnScope.TopUpTab(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            viewModel.quickAmounts.forEach { amount ->
+            paymentViewModel.quickAmounts.forEach { amount ->
                 Button(
-                    onClick = { viewModel.selectQuickAmount(amount) },
+                    onClick = { paymentViewModel.selectQuickAmount(amount) },
                     modifier = Modifier.weight(1f),
                     colors = ButtonDefaults.buttonColors(
                         backgroundColor = Color(0xFFE3F2FD)
@@ -334,7 +334,7 @@ fun ColumnScope.TopUpTab(
         
         ConfirmButton(
             text = "💰 Xác nhận nạp tiền",
-            onClick = { viewModel.showTopUpPinDialog() },
+            onClick = { paymentViewModel.showTopUpPinDialog() },
             modifier = Modifier.weight(1f),
             enabled = !state.isLoading && state.selectedCustomer != null && state.topUpAmount.isNotEmpty()
         )
@@ -346,10 +346,10 @@ fun ColumnScope.TopUpTab(
             title = "Xác thực PIN để nạp tiền",
             onVerified = { pin ->
                 coroutineScope.launch {
-                    viewModel.processTopUp(onTopUp)
+                    paymentViewModel.processTopUp(onTopUp)
                 }
             },
-            onDismiss = { viewModel.dismissTopUpPinDialog() }
+            onDismiss = { paymentViewModel.dismissTopUpPinDialog() }
         )
     }
 }
@@ -359,13 +359,13 @@ fun ColumnScope.TopUpTab(
  */
 @Composable
 fun ColumnScope.ExtensionTab(
-    viewModel: PaymentViewModel,
+    paymentViewModel: PaymentViewModel,
     state: ExtensionState,
     customers: List<Customer>,
     onExtension: (ExtensionRequest) -> Unit
 ) {
     val filteredCustomers = remember(state.cardId, customers) {
-        viewModel.getFilteredCustomers(state.cardId, isTopUp = false)
+        paymentViewModel.getFilteredCustomers(state.cardId, isTopUp = false)
     }
     
     Column(
@@ -387,7 +387,7 @@ fun ColumnScope.ExtensionTab(
             CustomTextField(
                 label = "Card ID",
                 value = state.cardId,
-                onValueChange = { viewModel.updateExtensionCardId(it) },
+                onValueChange = { paymentViewModel.updateExtensionCardId(it) },
                 modifier = Modifier.fillMaxWidth(),
                 placeholder = "Nhập Card ID hoặc tên khách hàng"
             )
@@ -410,7 +410,7 @@ fun ColumnScope.ExtensionTab(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clickable {
-                                        viewModel.selectExtensionCustomer(customer)
+                                        paymentViewModel.selectExtensionCustomer(customer)
                                     }
                                     .padding(12.dp)
                             ) {
@@ -535,7 +535,7 @@ fun ColumnScope.ExtensionTab(
         NumericTextField(
             label = "Số tháng",
             value = state.quantity,
-            onValueChange = { viewModel.updateExtensionQuantity(it) },
+            onValueChange = { paymentViewModel.updateExtensionQuantity(it) },
             placeholder = "1"
         )
         
@@ -629,7 +629,7 @@ fun ColumnScope.ExtensionTab(
         
         ConfirmButton(
             text = "Xác nhận gia hạn",
-            onClick = { viewModel.showExtensionPinDialog() },
+            onClick = { paymentViewModel.showExtensionPinDialog() },
             modifier = Modifier.weight(1f),
             enabled = state.selectedCustomer != null && 
                       state.quantity.toIntOrNull() != null && 
@@ -643,9 +643,9 @@ fun ColumnScope.ExtensionTab(
         PinVerificationDialog(
             title = "Xác thực PIN để thanh toán",
             onVerified = { pin ->
-                viewModel.processExtension(onExtension)
+                paymentViewModel.processExtension(onExtension)
             },
-            onDismiss = { viewModel.dismissExtensionPinDialog() }
+            onDismiss = { paymentViewModel.dismissExtensionPinDialog() }
         )
     }
 }

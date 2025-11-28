@@ -1,4 +1,4 @@
-package core.ui.components.main
+package feature.main
 
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.BorderStroke

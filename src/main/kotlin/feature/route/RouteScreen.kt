@@ -17,7 +17,6 @@ import core.model.BusRoute
 import core.ui.components.*
 import java.awt.Desktop
 import java.net.URI
-import ui.components.*
 
 /**
  * Màn hình Lộ Trình - Xem tuyến đường xe buýt
@@ -29,19 +28,19 @@ fun RouteDialog(
     onRouteSelected: (String, String, String) -> Unit  // routeName, startPoint, endPoint
 ) {
     // Khởi tạo ViewModel
-    val viewModel = remember { RouteViewModel() }
-    val state by viewModel.state.collectAsState()
+    val routeViewModel = remember { RouteViewModel() }
+    val state by routeViewModel.state.collectAsState()
     
     // Cleanup
     DisposableEffect(Unit) {
         onDispose {
-            viewModel.onCleared()
+            routeViewModel.onCleared()
         }
     }
     
     // Điểm dừng của tuyến được chọn
     val routeStations = remember(state.selectedRoute) {
-        viewModel.getRouteStations()
+        routeViewModel.getRouteStations()
     }
     
     Dialog(onDismissRequest = onDismiss) {
@@ -76,9 +75,9 @@ fun RouteDialog(
                 // Chọn tuyến
                 CustomDropdown(
                     label = "Chọn tuyến xe buýt *",
-                    items = viewModel.availableRoutes,
+                    items = routeViewModel.availableRoutes,
                     selectedItem = state.selectedRoute ?: BusRoute("", "", emptyList()),
-                    onItemSelected = { viewModel.selectRoute(it) },
+                    onItemSelected = { routeViewModel.selectRoute(it) },
                     itemLabel = { "${it.id} - ${it.name}" }
                 )
                 
@@ -92,7 +91,7 @@ fun RouteDialog(
                             label = "Điểm đi *",
                             items = routeStations,
                             selectedItem = state.startPoint.ifEmpty { routeStations.first() },
-                            onItemSelected = { viewModel.updateStartPoint(it) },
+                            onItemSelected = { routeViewModel.updateStartPoint(it) },
                             itemLabel = { it },
                             modifier = Modifier.weight(1f)
                         )
@@ -101,7 +100,7 @@ fun RouteDialog(
                             label = "Điểm đến *",
                             items = routeStations.filter { it != state.startPoint },
                             selectedItem = state.endPoint.ifEmpty { routeStations.last() },
-                            onItemSelected = { viewModel.updateEndPoint(it) },
+                            onItemSelected = { routeViewModel.updateEndPoint(it) },
                             itemLabel = { it },
                             modifier = Modifier.weight(1f)
                         )
@@ -130,7 +129,7 @@ fun RouteDialog(
                     
                     // Link mở Google Maps trong trình duyệt
                     val mapUrl = remember(state.startPoint, state.endPoint) {
-                        viewModel.getMapUrl()
+                        routeViewModel.getMapUrl()
                     }
                     
                     Button(
@@ -138,7 +137,7 @@ fun RouteDialog(
                             try {
                                 Desktop.getDesktop().browse(URI(mapUrl))
                             } catch (e: Exception) {
-                                viewModel.updateStatusMessage("❌ Không thể mở trình duyệt")
+                                routeViewModel.updateStatusMessage("❌ Không thể mở trình duyệt")
                             }
                         },
                         colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF2196F3)),

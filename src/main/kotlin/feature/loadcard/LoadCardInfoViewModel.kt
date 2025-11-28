@@ -47,12 +47,12 @@ class LoadCardInfoViewModel(
     /**
      * Kiểm tra trạng thái kết nối ban đầu
      */
-    private suspend fun checkInitialConnection() {
+    private fun checkInitialConnection() {
         if (BusCardManager.isConnected) {
             _state.update { 
                 it.copy(
                     isConnected = true,
-                    statusMessage = "✓ Đã kết nối với thẻ"
+                    statusMessage = " Đã kết nối với thẻ"
                 )
             }
         }
@@ -62,24 +62,24 @@ class LoadCardInfoViewModel(
      * Kết nối với thẻ
      */
     suspend fun connect() {
-        _state.update { 
+        _state.update {
             it.copy(
                 isLoading = true,
                 statusMessage = "Đang kết nối với thẻ..."
             )
         }
-        
+
         val result = withContext(Dispatchers.IO) { 
             BusCardManager.connect() 
         }
-        
+
         _state.update { it.copy(isLoading = false) }
         
         result.onSuccess {
             _state.update { 
                 it.copy(
                     isConnected = true,
-                    statusMessage = "✓ Đã kết nối với thẻ"
+                    statusMessage = "Đã kết nối với thẻ"
                 )
             }
         }.onFailure { error ->
@@ -133,7 +133,7 @@ class LoadCardInfoViewModel(
         }
         
         _state.update { it.copy(isLoading = false) }
-        
+
         checkResult.onSuccess { hasData ->
             if (hasData) {
                 _state.update { 
@@ -360,6 +360,10 @@ class LoadCardInfoViewModel(
                 balance = state.balance.toDoubleOrNull() ?: 0.0,
                 pin = state.pin,
                 linkedCustomerCode = state.linkedCustomerCode,
+                cccd = state.cccd,
+                dob = state.dob.text,
+                address = state.address,
+                phone = state.phone,
                 photoBytes = state.photoBytes
             )
         }
@@ -446,6 +450,10 @@ class LoadCardInfoViewModel(
         balance: Double,
         pin: String,
         linkedCustomerCode: String,
+        cccd: String = "",
+        dob: String = "",
+        address: String = "",
+        phone: String = "",
         photoBytes: ByteArray? = null
     ): Boolean {
         return try {
@@ -457,7 +465,11 @@ class LoadCardInfoViewModel(
                 customerType = customerType.displayName,
                 expiryDate = expiryString,
                 cardType = cardType.displayName,
-                linkedCustomerId = linkedCustomerCode
+                linkedCustomerId = linkedCustomerCode,
+                cccd = cccd,
+                dob = dob,
+                address = address,
+                phone = phone
             )
             if (infoResult.isFailure) return false
 
@@ -467,7 +479,7 @@ class LoadCardInfoViewModel(
             val balanceResult = BusCardManager.updateBalance(balance)
             if (balanceResult.isFailure) return false
 
-            val pinResult = BusCardManager.updatePin(pin)
+            val pinResult = BusCardManager.updatePin("", pin) // Tạo PIN lần đầu, không cần PIN cũ
             if (pinResult.isFailure) return false
 
             // Ghi ảnh vào thẻ nếu có

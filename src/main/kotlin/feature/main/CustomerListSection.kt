@@ -1,4 +1,4 @@
-package core.ui.components.main
+package feature.main
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
@@ -23,7 +23,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import core.model.Customer
 import core.ui.*
-import ui.*
 import core.ui.components.GlassCard
 import core.ui.components.LoadingCard
 

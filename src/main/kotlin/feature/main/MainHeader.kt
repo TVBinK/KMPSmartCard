@@ -1,4 +1,4 @@
-package core.ui.components.main
+package feature.main
 
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
@@ -24,7 +24,6 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import core.ui.*
-import ui.*
 import core.ui.components.AnimatedCustomerCount
 
 @Composable

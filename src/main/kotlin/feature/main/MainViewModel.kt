@@ -123,6 +123,12 @@ class MainViewModel {
      * Xử lý quẹt thẻ
      */
     suspend fun handleCardTap(cardId: String) {
+        // Kiểm tra thẻ có bị khóa không
+        if (BusCardManager.isCardBlocked) {
+            println("⚠️ Không thể quẹt thẻ: Thẻ đã bị khóa")
+            return
+        }
+        
         val customer = _state.value.customers.find { it.cardId == cardId } ?: return
         
         when (customer.cardType) {
@@ -292,7 +298,11 @@ class MainViewModel {
                     customerType = customer.customerType.displayName,
                     expiryDate = newExpiry.format(formatter),
                     cardType = CardType.MONTHLY.displayName,
-                    linkedCustomerId = customer.linkedCustomerCode
+                    linkedCustomerId = customer.linkedCustomerCode,
+                    cccd = customer.cccd,
+                    dob = customer.dob,
+                    address = customer.address,
+                    phone = customer.phone
                 )
                 if (infoResult.isFailure) {
                     println("Khong the cap nhat thong tin gia han len the: ${infoResult.exceptionOrNull()?.message}")

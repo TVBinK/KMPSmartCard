@@ -5,36 +5,32 @@ Nền tảng quản lý vé xe buýt thông minh kết hợp **Java Card Applet*
 ---
 
 ## Tổng Quan Kiến Trúc
-- **Desktop Client (Kotlin + Compose Desktop):** giao diện điều hành, quản lý khách hàng, xử lý giao dịch, trực quan dữ liệu.
-- **Smart Card Layer:**
-  - `BusCardApplet` (Java Card 3.0.4) lưu thông tin thẻ, mã hóa AES-128-CBC toàn bộ dữ liệu EEPROM.
-  - `BusSmartCard` client sử dụng PC/SC để gửi APDU đến thẻ.
-- **Persistence:** SQLite (`bus_card_management.db`) truy cập thông qua `DatabaseManager`.
-- **Security Utilities:** `security/SecurityUtils.kt` xử lý mã hóa phía desktop, khởi tạo key, kiểm tra toàn vẹn dữ liệu.
 
----
+### 🏗️ Kiến Trúc MVVM
+Ứng dụng sử dụng **MVVM (Model-View-ViewModel)** pattern:
+- **Model:** `core/model/` - Customer, Transaction, Trip, CardType, CustomerType
+- **View:** `feature/*/` - Các Composable screens và dialogs
+- **ViewModel:** `feature/*/` - Quản lý state và business logic
+- **State:** `feature/*/` - Data classes định nghĩa UI state
 
-## Tính Năng Chính
-- **Quản lý khách hàng:** tạo mới, cập nhật, xem lịch sử hành trình, nhập ảnh chân dung, phân loại (ưu tiên/thường).
-- **Quản lý thẻ thông minh:** khởi tạo card ID, lưu thông tin cá nhân, đổi PIN, khóa/mở khóa thẻ, kiểm tra số dư trực tiếp trên thẻ.
-- **Giao dịch & vé:**
-  - Nạp tiền nhanh (50k/100k/200k/500k) hoặc nhập tùy ý.
-  - Gia hạn vé tháng, tự động chuyển về vé thường nếu hết hạn.
-  - Tính toán trừ tiền mỗi lần quẹt (7.000đ) với thẻ thường; miễn phí với thẻ tháng còn hạn.
-- **Giám sát thời gian thực:** màn hình quẹt thẻ live, thống kê số lượng khách, biểu đồ mini, danh sách hoạt động gần nhất.
-- **Lộ trình & kiểm tra vé:** hiển thị tuyến, chuyển tuyến, xác thực vé nhanh cho nhân viên soát vé.
-- **Bảo mật:** PIN mã hóa AES, bộ đếm sai PIN, khóa thẻ sau 4 lần nhập sai, chỉ admin mới mở khóa.
+### 💾 Smart Card Layer
+- **BusCardApplet** (Java Card 3.0.4): 
+  - Lưu trữ thông tin thẻ trên EEPROM
+  - Mã hóa AES-128-CBC toàn bộ dữ liệu
+  - Xử lý PIN verification và counter
+- **BusCardManager** (Kotlin): 
+  - Sử dụng PC/SC để giao tiếp với thẻ
+  - Gửi/nhận APDU commands
+  - Quản lý kết nối và đọc/ghi dữ liệu
 
----
+### 🔒 Security
+- **SecurityUtils:** Xử lý mã hóa phía desktop, khởi tạo key
+- **AES-128-CBC:** Mã hóa dữ liệu trên thẻ
+- **PIN Protection:** Bộ đếm sai PIN, khóa thẻ sau 4 lần sai
 
 ## Thiết Lập & Chạy Ứng Dụng
-1. **Clone dự án & cài dependency:**
-   ```powershell
-   git clone <repo>
-   cd KmpUiSmartCard
-   ```
-2. **Copy file BusCardApplet vào jcide vào chạy cổng** 
-3. **Chạy Desktop App:**
+1**Copy file** BusCardApplet **vào jcide vào chạy cổng** 
+2**Chạy Desktop App:**
    ```powershell
    .\gradlew.bat run
    ```
@@ -42,18 +38,15 @@ Nền tảng quản lý vé xe buýt thông minh kết hợp **Java Card Applet*
 
 ---
 
-## Build & Nạp Java Card Applet
-1. Mở `src/main/java/com/buscardmanagement/applet/BusCardApplet.java` bằng JCIDE (hoặc IDE tương tự).
-2. Cập nhật `AID`, key và tham số nếu cần đúng với card thực tế.
-3. Dùng `build-applet.bat` (tuỳ chỉnh script) hoặc công cụ của JCIDE để compile và sinh CAP.
-4. Nạp CAP lên thẻ:
-   - Kết nối đầu đọc PC/SC.
-   - Sử dụng JCIDE, GlobalPlatformPro hoặc tool của nhà cung cấp để install CAP và thiết lập `AES key`, `IV`, `PIN` mặc định.
-5. Sau khi nạp thành công, dùng màn hình "Nạp thông tin vào thẻ" trong app desktop để khởi tạo dữ liệu khách hàng đầu tiên.
+## Các hàm chính
+### Connect()
 
-> Lưu ý: nếu đang sử dụng thẻ giả lập (JCIDE simulator), cần chạy simulator trước khi mở ứng dụng desktop để client có thể kết nối qua PC/SC.
-
----
+```
+Khi user bấm click Kết nối Java Card -> gọi onConnect(trong ConnectStep) -> loadCardInfoViewModel.connect() 
+                              -> BusCardManager.connect() -> connectCard (BusSmartCard.java)
+                        
+Khi user bấm đọc thẻ -> gọi readSmartCardViewModel.onDialogOpened (trong ReadSmartCardDialog) -> ReadSmartCardViewModel.autoReadCardInternal()
+```
 
 ## Luồng Trao Đổi Dữ Liệu
 ### Ghi dữ liệu xuống thẻ
@@ -87,30 +80,6 @@ Chi tiết triển khai có trong `BusCardApplet.java` và `smartcard/BusCardMan
 - **Dữ liệu mã hóa:** thông tin khách, số dư, card ID, ảnh bytes, lịch sử quẹt, PIN, thông tin lần quẹt cuối.
 - **Desktop SecurityUtils:** tạo khóa phiên khi đồng bộ, bảo vệ dữ liệu tạm trong RAM.
 - **Counter PIN:** lưu trên thẻ, đảm bảo không thể brute-force từ desktop.
-
----
-
-## Cấu Trúc Thư Mục
-```
-src/
-├─ main/
-│  ├─ kotlin/
-│  │  ├─ Main.kt, MainApp.kt
-│  │  ├─ database/           # DatabaseManager + DAO SQLite
-│  │  ├─ smartcard/          # BusCardManager: PC/SC + APDU helpers
-│  │  ├─ ui/                 # Compose components, screens, dialogs
-│  │  ├─ models/             # Customer, Transaction, Trip, CardType...
-│  │  └─ security/, utils/   # Helper & constants
-│  └─ java/com/buscardmanagement/
-│     ├─ applet/             # BusCardApplet + biến thể clean/fixed
-│     └─ client/             # BusSmartCard.java (thao tác APDU native)
-└─ resources/icons/          # Icon sử dụng trong UI
-```
-
-Các script bổ trợ:
-- `build-applet.bat`: build CAP nhanh.
-- `start-system.bat`: khởi động đồng thời mô phỏng smart card + desktop (tuỳ chỉnh).
-
 ---
 
 ## Lược Đồ CSDL
@@ -119,20 +88,6 @@ Các script bổ trợ:
 - **route_history:** lưu hành trình, tuyến, điểm lên/xuống để hỗ trợ thống kê và xác thực vé.
 
 File schema mẫu: `db/schema_sqlite.sql`.
-
----
-
-## Quy Tắc Vé
-- **Vé thường (NORMAL):** trừ 7.000đ/lượt, yêu cầu số dư >= 7.000đ trước khi quẹt.
-- **Vé tháng (MONTHLY):** phí 100.000đ/tháng, miễn phí khi quẹt trong thời gian còn hạn, tự động chuyển về vé thường khi hết hạn.
-- **Gia hạn:** hệ thống trừ trước số dư cần thiết, cập nhật expiry date và đồng bộ lại lên thẻ.
-
----
-
-## Ghi Chú Phát Triển
-- Compose Desktop đã bật animation và hiệu ứng glassmorphism, máy cấu hình thấp có thể tắt bớt ở `ui/DesignSystem.kt`.
-- `BusCardApplet_fixed.java` và `BusCardApplet_clean.java` dùng làm tài liệu so sánh/debug nếu cần refactor.
-- Có thể thay thế SQLite bằng server từ xa bằng cách hiện thực lại `DatabaseManager`.
 
 ---
 

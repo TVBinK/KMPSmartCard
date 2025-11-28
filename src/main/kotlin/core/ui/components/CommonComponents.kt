@@ -590,8 +590,19 @@ fun ImagePlaceholder(
         if (photoBytes != null && photoBytes.isNotEmpty()) {
             val imageBitmap = remember(photoBytes) {
                 try {
-                    org.jetbrains.skia.Image.makeFromEncoded(photoBytes).asImageBitmap()
+                    // Kiểm tra JPEG header trước khi decode
+                    val isValidJpeg = photoBytes.size >= 2 && 
+                                     photoBytes[0] == 0xFF.toByte() && 
+                                     photoBytes[1] == 0xD8.toByte()
+                    
+                    if (!isValidJpeg) {
+                        println("[ImagePlaceholder] Cảnh báo: Dữ liệu không phải JPEG hợp lệ (size=${photoBytes.size} bytes, header=${if (photoBytes.size >= 2) "${photoBytes[0].toUByte().toString(16)} ${photoBytes[1].toUByte().toString(16)}" else "N/A"})")
+                        null
+                    } else {
+                        org.jetbrains.skia.Image.makeFromEncoded(photoBytes).asImageBitmap()
+                    }
                 } catch (e: Exception) {
+                    println("[ImagePlaceholder] Lỗi decode ảnh: ${e.message}")
                     e.printStackTrace()
                     null
                 }
@@ -842,10 +853,5 @@ fun GlassCard(
             content = content
         )
     }
-}
-
-
-enum class StatusType {
-    Success, Warning, Error, Info
 }
 

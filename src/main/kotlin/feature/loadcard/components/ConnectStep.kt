@@ -17,21 +17,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 @Composable
-fun ConnectStepContent(
+fun ConnectStep(
     isConnected: Boolean,
     onConnect: () -> Unit,
     onNext: () -> Unit
 ) {
-    var isConnecting by remember { mutableStateOf(false) }
-    var statusMessage by remember { mutableStateOf("Chưa kết nối") }
-    
-    // Update status message based on connection state
-    LaunchedEffect(isConnected) {
-        if (isConnected) {
-            statusMessage = "✓ Đã kết nối với card reader"
-            isConnecting = false
-        }
-    }
 
     Column(
         modifier = Modifier
@@ -72,7 +62,7 @@ fun ConnectStepContent(
                             color = Color.Gray
                         )
                         Text(
-                            text = statusMessage,
+                            text = "Chưa kết nối",
                             fontSize = 14.sp,
                             fontWeight = FontWeight.Bold
                         )
@@ -84,30 +74,15 @@ fun ConnectStepContent(
         // Connect Button
         if (!isConnected) {
             Button(
-                onClick = {
-                    isConnecting = true
-                    statusMessage = "Đang kết nối..."
-                    onConnect()
-                },
+                onClick = onConnect,
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(54.dp),
-                colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF2196F3)),
-                enabled = !isConnecting
+                colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF2196F3))
             ) {
-                if (isConnecting) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(20.dp),
-                        color = Color.White,
-                        strokeWidth = 2.dp
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Đang kết nối...", color = Color.White, fontSize = 14.sp)
-                } else {
-                    Icon(Icons.Default.Add, contentDescription = null, tint = Color.White)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Kết nối Java Card", color = Color.White, fontSize = 14.sp)
-                }
+                Icon(Icons.Default.Add, contentDescription = null, tint = Color.White)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Kết nối Java Card", color = Color.White, fontSize = 14.sp)
             }
         } else {
             Card(

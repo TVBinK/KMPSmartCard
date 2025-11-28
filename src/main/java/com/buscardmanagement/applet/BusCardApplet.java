@@ -118,6 +118,11 @@ public class BusCardApplet extends Applet {
     private RSAPrivateKey rsaPrivateKey;
     private RSAPublicKey rsaPublicKey;
 
+    // Trạng thái mã hóa của ảnh:
+    // - true: dữ liệu trong picture hiện đang là ciphertext AES, độ dài pictureLen là độ dài ciphertext
+    // - false: dữ liệu trong picture là plaintext, độ dài pictureLen là độ dài ảnh thật
+    private boolean isPictureEncrypted;
+
     private BusCardApplet() {
         pin = new OwnerPIN(MAX_PIN_ATTEMPTS, (byte)MAX_PIN_LEN);
 
@@ -205,7 +210,7 @@ public class BusCardApplet extends Applet {
             ISOException.throwIt(SW_CARD_NOT_INITIALIZED);
         }
 
-        if (isCardBlocked) {
+        if (isCardBlocked && ins != INS_UNLOCK_CARD) {
             ISOException.throwIt(SW_CARD_BLOCKED);
         }
 
@@ -285,6 +290,7 @@ public class BusCardApplet extends Applet {
         isCardBlocked = false;
         pinAttempts = 0;
         pin.reset();
+        isPictureEncrypted = false;
     }
 
     private void updateCustomerInfo(APDU apdu) {
@@ -393,42 +399,117 @@ public class BusCardApplet extends Applet {
         byte[] buffer = apdu.getBuffer();
         short lc = apdu.setIncomingAndReceive();
 
-        if (lc == 0 || lc > MAX_PIN_LEN) {
+        // Format: oldPinLength (1 byte) + oldPin + newPin
+        // Trường hợp tạo PIN lần đầu (pinLen == 0): oldPinLength = 0, chỉ có newPin
+        // Trường hợp đổi PIN: oldPinLength > 0, có cả oldPin và newPin
+        // Tối thiểu: 1 (oldPinLength) + 1 (newPin) = 2 bytes (khi tạo PIN lần đầu)
+        // Tối đa: 1 + MAX_PIN_LEN + MAX_PIN_LEN = 1 + 8 + 8 = 17 bytes
+        if (lc < 2 || lc > (short)(1 + MAX_PIN_LEN + MAX_PIN_LEN)) {
             ISOException.throwIt(SW_WRONG_PARAMS);
         }
 
-        if (!pin.isValidated() && pinLen != 0) {
-            ISOException.throwIt(SW_AUTH_FAILED);
+        // Đọc độ dài PIN cũ
+        byte oldPinLength = buffer[ISO7816.OFFSET_CDATA];
+        if (oldPinLength > MAX_PIN_LEN) {
+            ISOException.throwIt(SW_WRONG_PARAMS);
         }
 
-        pin.update(buffer, ISO7816.OFFSET_CDATA, (byte)lc);
-        pinLen = encryptAes(buffer, ISO7816.OFFSET_CDATA, lc, pinEncrypted, (short)0);
+        // Kiểm tra tổng độ dài hợp lệ
+        short expectedLength = (short)(1 + oldPinLength);
+        if (lc < expectedLength + 1) { // Ít nhất 1 byte cho newPin
+            ISOException.throwIt(SW_WRONG_PARAMS);
+        }
+
+        short newPinLength = (short)(lc - expectedLength);
+        if (newPinLength == 0 || newPinLength > MAX_PIN_LEN) {
+            ISOException.throwIt(SW_WRONG_PARAMS);
+        }
+
+        // Nếu thẻ đã có PIN (pinLen != 0), phải kiểm tra PIN cũ
+        if (pinLen != 0) {
+            if (oldPinLength == 0) {
+                // Thẻ đã có PIN nhưng không cung cấp PIN cũ
+                ISOException.throwIt(SW_AUTH_FAILED);
+            }
+
+            // Kiểm tra PIN cũ trước
+            short oldPinOffset = (short)(ISO7816.OFFSET_CDATA + 1);
+            if (!pin.check(buffer, oldPinOffset, oldPinLength)) {
+                // PIN cũ sai - tăng counter
+                pinAttempts++;
+                if (pinAttempts >= MAX_PIN_ATTEMPTS) {
+                    isCardBlocked = true;
+                    ISOException.throwIt(SW_AUTH_FAILED);
+                }
+                // Trả về số lần thử còn lại
+                buffer[0] = pinAttempts;
+                apdu.setOutgoingAndSend((short)0, (short)1);
+                return;
+            }
+        } else {
+            // Tạo PIN lần đầu - không cần kiểm tra PIN cũ
+            // Nhưng nếu có cung cấp oldPinLength > 0 thì báo lỗi
+            if (oldPinLength > 0) {
+                ISOException.throwIt(SW_WRONG_PARAMS);
+            }
+        }
+
+        // PIN cũ đúng (hoặc tạo PIN lần đầu) - cho phép đổi/tạo PIN mới
+        short newPinOffset;
+        if (oldPinLength == 0) {
+            // Tạo PIN lần đầu
+            newPinOffset = (short)(ISO7816.OFFSET_CDATA + 1);
+        } else {
+            // Đổi PIN
+            short oldPinOffset = (short)(ISO7816.OFFSET_CDATA + 1);
+            newPinOffset = (short)(oldPinOffset + oldPinLength);
+        }
+        
+        pin.update(buffer, newPinOffset, (byte)newPinLength);
+        pinLen = encryptAes(buffer, newPinOffset, (byte)newPinLength, pinEncrypted, (short)0);
         pinAttempts = 0;
+        buffer[0] = 0x00;
+        apdu.setOutgoingAndSend((short)0, (short)1);
     }
 
     private void updatePicture(APDU apdu) {
         byte[] buffer = apdu.getBuffer();
 
         short lc = (short)(buffer[ISO7816.OFFSET_LC] & 0xFF);
+        short dataOffset = ISO7816.OFFSET_CDATA;
         if (lc == 0) {
+            // Extended length: 3-byte Lc (00 HH LL), dữ liệu bắt đầu sau 2 byte HH LL
             lc = readExtendedLc(buffer);
+            dataOffset = (short)(ISO7816.OFFSET_CDATA + 2);
         }
 
+        // Đọc plaintext image vào tempBuffer trước
+        // Giới hạn plaintext để sau khi mã hóa vẫn nằm trong MAX_PICTURE_LEN
+        // Plaintext tối đa: 32752 bytes (32767 - 15) để sau khi padding (16 bytes) = 32768 bytes
+        short maxPlaintextLen = (short)(MAX_PICTURE_LEN - AES_BLOCK_SIZE + 1);
+        if (lc > maxPlaintextLen) {
+            ISOException.throwIt(SW_WRONG_PARAMS);
+        }
+
+        // Buffer tạm để lưu plaintext image (tối đa 32752 bytes)
+        // Sử dụng picture array làm buffer tạm vì nó đủ lớn
         short totalRead = 0;
         short bytesRead = apdu.setIncomingAndReceive();
 
         while (bytesRead > 0) {
-            if ((short)(totalRead + bytesRead) > MAX_PICTURE_LEN) {
+            if ((short)(totalRead + bytesRead) > maxPlaintextLen) {
                 ISOException.throwIt(SW_WRONG_PARAMS);
             }
 
-            Util.arrayCopyNonAtomic(buffer, ISO7816.OFFSET_CDATA, picture, totalRead, bytesRead);
+            Util.arrayCopyNonAtomic(buffer, dataOffset, picture, totalRead, bytesRead);
             totalRead = (short)(totalRead + bytesRead);
 
             if (totalRead >= lc) {
                 break;
             }
 
+            // Các lần sau dữ liệu luôn nằm tại OFFSET_CDATA
+            dataOffset = ISO7816.OFFSET_CDATA;
             bytesRead = apdu.receiveBytes(ISO7816.OFFSET_CDATA);
         }
 
@@ -436,30 +517,159 @@ public class BusCardApplet extends Applet {
             ISOException.throwIt(SW_WRONG_PARAMS);
         }
 
-        pictureLen = lc;
+        // Mã hóa AES plaintext image
+        // picture hiện tại chứa plaintext từ offset 0, length = totalRead
+        // Mã hóa trực tiếp vào chính picture array (overwrite) với padding tại chỗ
+        pictureLen = encryptAesPicture(picture, (short)0, totalRead);
+        isPictureEncrypted = true;
 
+        // Xóa phần còn lại của picture array nếu có
         if (pictureLen < picture.length) {
             Util.arrayFillNonAtomic(picture, pictureLen, (short)(picture.length - pictureLen), (byte)0);
         }
     }
 
+    /**
+     * Đọc ảnh theo CHUNK.
+     *
+     * - Ảnh được lưu trên thẻ ở dạng AES + padding (ciphertext) trong mảng picture, độ dài pictureLen.
+     * - Khi đọc:
+     *   + Giải mã toàn bộ ciphertext vào lại mảng picture (plaintext).
+     *   + Dùng P1|P2 làm offset (big-endian) trong ảnh plaintext.
+     *   + Mỗi APDU chỉ trả về tối đa min(remaining, maxLenCanSend) byte.
+     *
+     * Giao thức host:
+     *   CLA  INS   P1   P2   Le
+     *   00   23   offHi offLo 00/NN
+     *
+     *   - off = (offHi<<8) | offLo: offset trong ảnh plaintext.
+     *   - Host lặp lại lệnh với offset tăng dần cho tới khi số byte trả về < kích thước chunk mong muốn.
+     */
     private void getPicture(APDU apdu) {
         if (pictureLen == 0) {
             ISOException.throwIt(SW_CARD_NOT_INITIALIZED);
         }
 
-        byte[] buffer = apdu.getBuffer();
-        short offset = 0;
-        short remaining = pictureLen;
-        short chunkSize = (short)256;
-
-        while (remaining > 0) {
-            short toSend = remaining > chunkSize ? chunkSize : remaining;
-            Util.arrayCopyNonAtomic(picture, offset, buffer, (short)0, toSend);
-            apdu.setOutgoingAndSend((short)0, toSend);
-            offset = (short)(offset + toSend);
-            remaining = (short)(remaining - toSend);
+        // Nếu ảnh đang ở dạng ciphertext, giải mã một lần sang plaintext
+        if (isPictureEncrypted) {
+            try {
+                short plaintextLenDecoded = decryptAesPicture(picture, (short)0, pictureLen);
+                if (plaintextLenDecoded <= 0 || plaintextLenDecoded > MAX_PICTURE_LEN) {
+                    ISOException.throwIt(SW_WRONG_PARAMS);
+                }
+                // Từ giờ trở đi, picture chứa plaintext, pictureLen là độ dài thực
+                pictureLen = plaintextLenDecoded;
+                isPictureEncrypted = false;
+            } catch (CryptoException e) {
+                // Bất kỳ lỗi crypto nào cũng quy về tham số sai
+                ISOException.throwIt(SW_WRONG_PARAMS);
+            }
         }
+
+        short plaintextLen = pictureLen;
+        if (plaintextLen <= 0 || plaintextLen > MAX_PICTURE_LEN) {
+            ISOException.throwIt(SW_WRONG_PARAMS);
+        }
+
+        byte[] buffer = apdu.getBuffer();
+
+        // P1|P2 là offset trong ảnh plaintext
+        short offset = (short)(((short)(buffer[ISO7816.OFFSET_P1] & 0xFF) << 8)
+                             |  (short)(buffer[ISO7816.OFFSET_P2] & 0xFF));
+
+        if (offset < 0 || offset >= plaintextLen) {
+            ISOException.throwIt(SW_WRONG_PARAMS);
+        }
+
+        // Số byte còn lại từ offset đến cuối ảnh
+        short remaining = (short)(plaintextLen - offset);
+        if (remaining <= 0) {
+            ISOException.throwIt(SW_WRONG_PARAMS);
+        }
+
+        // Không dùng setOutgoing() để tránh vấn đề với extended-length / case APDU.
+        // Mỗi chunk gửi tối đa 240 byte (an toàn với kích thước buffer APDU).
+        short maxChunkSize = (short)240;
+        short toSend = remaining;
+        if (toSend > maxChunkSize) {
+            toSend = maxChunkSize;
+        }
+
+        if (toSend <= 0) {
+            ISOException.throwIt(SW_WRONG_PARAMS);
+        }
+
+        // Copy từ picture[offset] -> buffer[0..toSend-1] và gửi
+        Util.arrayCopyNonAtomic(picture, offset, buffer, (short)0, toSend);
+        apdu.setOutgoingAndSend((short)0, toSend);
+    }
+    
+    // Phương thức mã hóa AES cho ảnh lớn (mã hóa trực tiếp vào cùng array)
+    private short encryptAesPicture(byte[] plaintext, short ptOffset, short ptLength) {
+        if (aesCipher == null || aesKey == null) {
+            ISOException.throwIt(SW_CARD_NOT_INITIALIZED);
+        }
+        
+        // Tính độ dài sau khi padding (phải là bội số của 16)
+        short paddedLength = computePaddedLength(ptLength);
+        if (paddedLength > MAX_PICTURE_LEN) {
+            ISOException.throwIt(SW_WRONG_PARAMS);
+        }
+        
+        // Thêm padding trực tiếp vào plaintext array
+        byte paddingValue = (byte)(paddedLength - ptLength);
+        for (short i = (short)(ptOffset + ptLength); i < (short)(ptOffset + paddedLength); i++) {
+            plaintext[i] = paddingValue;
+        }
+        
+        // Mã hóa trực tiếp vào cùng array (overwrite plaintext với ciphertext)
+        aesCipher.init(aesKey, Cipher.MODE_ENCRYPT, aesIV, (short)0, (short)aesIV.length);
+        return aesCipher.doFinal(plaintext, ptOffset, paddedLength, plaintext, ptOffset);
+    }
+    
+    // Phương thức giải mã AES cho ảnh lớn (giải mã trực tiếp vào cùng array)
+    private short decryptAesPicture(byte[] ciphertext, short ctOffset, short ctLength) {
+        if (aesCipher == null || aesKey == null) {
+            ISOException.throwIt(SW_CARD_NOT_INITIALIZED);
+        }
+        
+        // Kiểm tra ctLength phải là bội số của AES_BLOCK_SIZE
+        if ((ctLength % AES_BLOCK_SIZE) != 0) {
+            ISOException.throwIt(SW_WRONG_PARAMS);
+        }
+        
+        // Giải mã vào chính ciphertext array (overwrite)
+        // Vì plaintext nhỏ hơn ciphertext (do loại bỏ padding), ta có thể giải mã trực tiếp
+        aesCipher.init(aesKey, Cipher.MODE_DECRYPT, aesIV, (short)0, (short)aesIV.length);
+        short decLen = aesCipher.doFinal(ciphertext, ctOffset, ctLength, ciphertext, ctOffset);
+        
+        // Kiểm tra decLen hợp lệ
+        if (decLen <= 0 || decLen > ctLength) {
+            ISOException.throwIt(SW_WRONG_PARAMS);
+        }
+        
+        // Loại bỏ padding
+        byte paddingValue = ciphertext[(short)(ctOffset + decLen - 1)];
+        
+        // Kiểm tra padding hợp lệ (từ 1 đến 16)
+        if (paddingValue < 1 || paddingValue > AES_BLOCK_SIZE) {
+            ISOException.throwIt(SW_WRONG_PARAMS);
+        }
+        
+        short actualLength = (short)(decLen - paddingValue);
+        
+        // Kiểm tra actualLength hợp lệ
+        if (actualLength < 0 || actualLength >= decLen) {
+            ISOException.throwIt(SW_WRONG_PARAMS);
+        }
+        
+        // Xóa phần padding còn lại
+        if (actualLength < decLen) {
+            Util.arrayFillNonAtomic(ciphertext, (short)(ctOffset + actualLength), 
+                                   (short)(decLen - actualLength), (byte)0);
+        }
+        
+        return actualLength;
     }
 
     private void getPublicKey(APDU apdu) {

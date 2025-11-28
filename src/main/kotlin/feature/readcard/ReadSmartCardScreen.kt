@@ -1,4 +1,4 @@
-package feature.smartcard
+package feature.readcard
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -27,22 +27,27 @@ import core.ui.components.InfoRow
 import java.time.format.DateTimeFormatter
 
 /**
- * SmartCardManagementScreen - Màn hình quản lý thẻ
+ * ReadSmartCardScreen - Màn hình đọc thông tin thẻ
  * Sử dụng MVVM pattern
  */
 @Composable
-fun SmartCardManagementDialog(
+fun ReadSmartCardDialog(
     onDismiss: () -> Unit
 ) {
     // Khởi tạo ViewModel
-    val viewModel = remember { SmartCardManagementViewModel() }
-    val state by viewModel.state.collectAsState()
+    val readSmartCardViewModel = remember { ReadSmartCardViewModel() }
+    val state by readSmartCardViewModel.state.collectAsState()
     val coroutineScope = rememberCoroutineScope()
+    
+    // Auto đọc thẻ mỗi lần dialog mở
+    LaunchedEffect(Unit) {
+        readSmartCardViewModel.onDialogOpened()
+    }
     
     // Cleanup
     DisposableEffect(Unit) {
         onDispose {
-            viewModel.onCleared()
+            readSmartCardViewModel.onCleared()
         }
     }
     
@@ -77,7 +82,7 @@ fun SmartCardManagementDialog(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            "Quản lý Smart Card",
+                            "Đọc Thẻ",
                             fontSize = 20.sp,
                             fontWeight = FontWeight.Bold
                         )
@@ -120,7 +125,7 @@ fun SmartCardManagementDialog(
                         tabs.forEachIndexed { index, title ->
                             Tab(
                                 selected = state.selectedTab == index,
-                                onClick = { viewModel.selectTab(index) },
+                                onClick = { readSmartCardViewModel.selectTab(index) },
                                 text = { Text(title, fontSize = 14.sp) }
                             )
                         }
@@ -139,11 +144,15 @@ fun SmartCardManagementDialog(
                             customer = state.selectedCustomer,
                             isConnected = state.isConnected,
                             isReadingCard = state.isReadingCard,
+                            isCardBlocked = state.isCardBlocked,
+                            isUnlockingCard = state.isUnlockingCard,
+                            actionMessage = state.actionMessage,
                             onReadCard = {
                                 coroutineScope.launch {
-                                    viewModel.readCard()
+                                    readSmartCardViewModel.readCard()
                                 }
-                            }
+                            },
+                            onUnlockCard = { readSmartCardViewModel.unlockCard() }
                         )
                         
                         1 -> TransactionTab(
@@ -164,8 +173,9 @@ fun SmartCardManagementDialog(
                     // Nút thay đổi PIN (chỉ hiển thị khi đã kết nối)
                     if (state.isConnected) {
                         Button(
-                            onClick = { viewModel.showChangePinDialog() },
-                            colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF2196F3))
+                            onClick = { readSmartCardViewModel.showChangePinDialog() },
+                            colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF2196F3)),
+                            enabled = !state.isCardBlocked
                         ) {
                             Icon(Icons.Default.Lock, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
                             Spacer(Modifier.width(6.dp))
@@ -185,10 +195,10 @@ fun SmartCardManagementDialog(
         // Change PIN Dialog
         if (state.showChangePinDialog) {
             ChangePinDialog(
-                onDismiss = { viewModel.dismissChangePinDialog() },
+                onDismiss = { readSmartCardViewModel.dismissChangePinDialog() },
                 onSuccess = {
                     println("PIN da doi thanh cong")
-                    viewModel.dismissChangePinDialog()
+                    readSmartCardViewModel.dismissChangePinDialog()
                 }
             )
         }
@@ -203,8 +213,90 @@ private fun InformationTab(
     customer: Customer?,
     isConnected: Boolean,
     isReadingCard: Boolean,
-    onReadCard: () -> Unit
+    isCardBlocked: Boolean,
+    isUnlockingCard: Boolean,
+    actionMessage: String,
+    onReadCard: () -> Unit,
+    onUnlockCard: () -> Unit
 ) {
+    if (isCardBlocked) {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+                modifier = Modifier.padding(24.dp)
+            ) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    backgroundColor = Color(0xFFFFEBEE),
+                    elevation = 0.dp
+                ) {
+                    Row(
+                        modifier = Modifier.padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Default.Lock,
+                            contentDescription = null,
+                            tint = Color(0xFFD32F2F),
+                            modifier = Modifier.size(32.dp)
+                        )
+                        Spacer(Modifier.width(12.dp))
+                        Column {
+                            Text(
+                                text = "Thẻ đang bị khóa",
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFFD32F2F)
+                            )
+                            Text(
+                                text = "Nhập sai PIN quá số lần cho phép. Vui lòng mở khóa thẻ để thao tác tiếp.",
+                                fontSize = 12.sp,
+                                color = Color(0xFFB71C1C)
+                            )
+                        }
+                    }
+                }
+                
+                Button(
+                    onClick = onUnlockCard,
+                    enabled = !isUnlockingCard,
+                    colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFFD32F2F)),
+                    modifier = Modifier
+                        .width(220.dp)
+                        .height(48.dp)
+                ) {
+                    if (isUnlockingCard) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(18.dp),
+                            color = Color.White,
+                            strokeWidth = 2.dp
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text("Đang mở khóa...", color = Color.White, fontSize = 14.sp)
+                    } else {
+                        Icon(imageVector = Icons.Filled.Lock, contentDescription = null, tint = Color.White)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Mở khóa thẻ", color = Color.White, fontSize = 14.sp)
+                    }
+                }
+                
+                if (actionMessage.isNotEmpty()) {
+                    Text(
+                        text = actionMessage,
+                        fontSize = 12.sp,
+                        color = if (actionMessage.contains("mở khóa", ignoreCase = true)) Color(0xFF2E7D32) else Color(0xFFD32F2F),
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    )
+                }
+            }
+        }
+        return
+    }
+    
     if (customer == null) {
         Box(
             modifier = Modifier.fillMaxSize(),
@@ -263,10 +355,20 @@ private fun InformationTab(
                 if (!isConnected) {
                     Spacer(Modifier.height(12.dp))
                     Text(
-                        "⚠️ Vui lòng nạp thông tin vào thẻ trước",
+                        "⚠️ Vui lòng kết nối card reader trước",
                         fontSize = 12.sp,
                         color = Color(0xFFFF9800),
                         fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
+                    )
+                }
+                
+                if (actionMessage.isNotEmpty()) {
+                    Spacer(Modifier.height(12.dp))
+                    Text(
+                        text = actionMessage,
+                        fontSize = 12.sp,
+                        color = Color(0xFFF44336),
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
                     )
                 }
             }
@@ -279,7 +381,6 @@ private fun InformationTab(
                 .padding(vertical = 8.dp, horizontal = 4.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            // Ảnh và tên
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 elevation = 4.dp
@@ -311,7 +412,6 @@ private fun InformationTab(
                 }
             }
             
-            // Chi tiết thẻ
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 elevation = 2.dp
@@ -324,7 +424,6 @@ private fun InformationTab(
                     Divider()
                     InfoRow("Loại thẻ", customer.cardType.displayName)
                     
-                    // Hiển thị các trường mới nếu có
                     if (customer.cccd.isNotEmpty()) {
                         InfoRow("CCCD", customer.cccd)
                     }
@@ -357,6 +456,14 @@ private fun InformationTab(
                         valueColor = if (customer.cardType == CardType.MONTHLY) Color(0xFF4CAF50) else Color(0xFF2196F3)
                     )
                 }
+            }
+            
+            if (actionMessage.isNotEmpty()) {
+                Text(
+                    text = actionMessage,
+                    fontSize = 12.sp,
+                    color = Color(0xFFF57C00)
+                )
             }
         }
     }
@@ -470,7 +577,9 @@ private fun TransactionTab(
                         val transactionType = transaction["transaction_type"] as? String ?: ""
                         
                         // Xác định loại giao dịch (cộng/trừ tiền)
-                        val isDeduction = transactionType in listOf("EXTEND_MONTHLY", "MONTHLY_PURCHASE")
+                        // TOP_UP = nạp tiền (cộng, màu xanh)
+                        // TAP, EXTEND_MONTHLY, MONTHLY_PURCHASE = trừ tiền (trừ, màu đỏ)
+                        val isDeduction = transactionType in listOf("TAP", "EXTEND_MONTHLY", "MONTHLY_PURCHASE")
                         val displayAmount = if (isDeduction && amount > 0) -amount else amount
                         
                         Text(

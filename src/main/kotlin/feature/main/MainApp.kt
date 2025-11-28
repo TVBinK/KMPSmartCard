@@ -14,10 +14,6 @@ import navigation.NavController
 import navigation.NavigationHost
 import navigation.Screen
 import core.ui.AppSpacing
-import core.ui.components.main.CustomerListSection
-import core.ui.components.main.MainHeader
-import core.ui.components.main.MainMenu
-import core.ui.components.main.RecentActivitySection
 
 /**
  * Màn hình chính của ứng dụng
@@ -25,10 +21,10 @@ import core.ui.components.main.RecentActivitySection
 @Composable
 fun MainApp() {
     // Khởi tạo ViewModel - quản lý tất cả state và logic nghiệp vụ
-    val viewModel = remember { MainViewModel() }
+    val mainViewModel = remember { MainViewModel() }
     
     // Collect state từ ViewModel
-    val state by viewModel.state.collectAsState()
+    val state by mainViewModel.state.collectAsState()
     
     // Navigation Controller
     val navController = remember { NavController(Screen.Home) }
@@ -39,7 +35,7 @@ fun MainApp() {
     // Cleanup khi Composable bị dispose
     DisposableEffect(Unit) {
         onDispose {
-            viewModel.onCleared()
+            mainViewModel.onCleared()
         }
     }
     MaterialTheme(
@@ -101,9 +97,9 @@ fun MainApp() {
                         customers = state.customers,
                         isLoading = state.isLoading,
                         searchQuery = state.searchQuery,
-                        onSearchQueryChange = { viewModel.updateSearchQuery(it) },
+                        onSearchQueryChange = { mainViewModel.updateSearchQuery(it) },
                         onCustomerClick = { customer ->
-                            viewModel.updateSelectedCustomer(customer.cardId)
+                            mainViewModel.updateSelectedCustomer(customer.cardId)
                             navController.navigateTo(Screen.CustomerCardInfo(customer))
                         }
                     )
@@ -114,20 +110,26 @@ fun MainApp() {
         NavigationHost(
             navController = navController,
             customers = state.customers,
-            onCustomerUpdated = { viewModel.refreshCustomers() },
+            onCustomerUpdated = { mainViewModel.refreshCustomers() },
             onCustomerDeleted = { customer ->
-                viewModel.deleteCustomer(customer)
+                mainViewModel.deleteCustomer(customer)
             },
             onTopUpCompleted = { cardId, amount ->
-                viewModel.handleTopUpTransaction(cardId, amount)
+                mainViewModel.handleTopUpTransaction(cardId, amount)
             },
             onTapDetected = { cardId, _ ->
                 coroutineScope.launch {
-                    viewModel.handleCardTap(cardId)
+                    mainViewModel.handleCardTap(cardId)
                 }
             },
             onExtensionRequest = { request ->
-                viewModel.handleMonthlyExtension(request)
+                mainViewModel.handleMonthlyExtension(request)
+            },
+            onCardDataWritten = {
+                // Refresh trạng thái thẻ sau khi ghi dữ liệu lên thẻ thành công
+                coroutineScope.launch {
+                    mainViewModel.refreshCardStatus()
+                }
             }
         )
     }

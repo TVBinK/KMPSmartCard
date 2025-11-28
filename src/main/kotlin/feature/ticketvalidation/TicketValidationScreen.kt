@@ -32,14 +32,14 @@ fun TicketValidationDialog(
     onDismiss: () -> Unit
 ) {
     // Khởi tạo ViewModel
-    val viewModel = remember { TicketValidationViewModel(customer) }
-    val state by viewModel.state.collectAsState()
+    val ticketValidationViewModel = remember { TicketValidationViewModel(customer) }
+    val state by ticketValidationViewModel.state.collectAsState()
     val coroutineScope = rememberCoroutineScope()
     
     // Cleanup
     DisposableEffect(Unit) {
         onDispose {
-            viewModel.onCleared()
+            ticketValidationViewModel.onCleared()
         }
     }
     
@@ -230,7 +230,7 @@ fun TicketValidationDialog(
                     text = "Đọc & Xác thực từ thẻ",
                     onClick = {
                         coroutineScope.launch {
-                            viewModel.readAndVerifyCard()
+                            ticketValidationViewModel.readAndVerifyCard()
                         }
                     },
                     modifier = Modifier.fillMaxWidth(),

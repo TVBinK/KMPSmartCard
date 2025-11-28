@@ -1,9 +1,7 @@
 package feature.loadcard
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.*
 import androidx.compose.material.icons.Icons
@@ -19,7 +17,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import feature.loadcard.components.CheckCardStepContent
-import feature.loadcard.components.ConnectStepContent
+import feature.loadcard.components.ConnectStep
 import feature.loadcard.components.InputInfoStepContent
 import feature.loadcard.components.WriteDataStepContent
 import kotlinx.coroutines.launch
@@ -35,19 +33,19 @@ fun LoadCardInfoDialog(
     onSuccess: (Customer) -> Unit
 ) {
     // Khởi tạo ViewModel
-    val viewModel = remember { 
+    val loadCardInfoViewModel = remember {
         LoadCardInfoViewModel(
             onSuccess = onSuccess,
             onDismiss = onDismiss
         )
     }
-    val state by viewModel.state.collectAsState()
+    val state by loadCardInfoViewModel.state.collectAsState()
     val coroutineScope = rememberCoroutineScope()
-    
+
     // Cleanup
     DisposableEffect(Unit) {
         onDispose {
-            viewModel.onCleared()
+            loadCardInfoViewModel.onCleared()
         }
     }
 
@@ -79,7 +77,7 @@ fun LoadCardInfoDialog(
                         Icon(imageVector = Icons.Default.Close, contentDescription = "Đóng")
                     }
                 }
-
+                // Progress
                 LinearProgressIndicator(
                     progress = when (state.currentStep) {
                         LoadStep.CONNECT -> 0.25f
@@ -91,26 +89,6 @@ fun LoadCardInfoDialog(
                         .fillMaxWidth()
                         .padding(top = 8.dp)
                 )
-
-                Row(
-                    modifier = Modifier.padding(top = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(12.dp)
-                            .background(
-                                color = when {
-                                    state.isLoading -> Color(0xFFFFC107)
-                                    state.isConnected -> Color(0xFF4CAF50)
-                                    else -> Color(0xFFFF5252)
-                                },
-                                shape = CircleShape
-                            )
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(text = state.statusMessage, fontSize = 12.sp, color = Color.Gray)
-                }
 
                 Spacer(modifier = Modifier.height(16.dp))
 
@@ -138,25 +116,25 @@ fun LoadCardInfoDialog(
                                 .verticalScroll(rememberScrollState())
                         ) {
                             when (state.currentStep) {
-                                LoadStep.CONNECT -> ConnectStepContent(
+                                LoadStep.CONNECT -> ConnectStep(
                                     isConnected = state.isConnected,
                                     onConnect = {
                                         coroutineScope.launch {
-                                            viewModel.connect()
+                                            loadCardInfoViewModel.connect()
                                         }
                                     },
-                                    onNext = { viewModel.nextStep() }
+                                    onNext = { loadCardInfoViewModel.nextStep() }
                                 )
 
                                 LoadStep.CHECK_CARD -> CheckCardStepContent(
                                     onCheck = {
                                         coroutineScope.launch {
-                                            viewModel.checkCard()
+                                            loadCardInfoViewModel.checkCard()
                                         }
                                     },
                                     onClearCard = {
                                         coroutineScope.launch {
-                                            viewModel.clearCard()
+                                            loadCardInfoViewModel.clearCard()
                                         }
                                     },
                                     isCardEmpty = state.isCardEmpty
@@ -165,35 +143,35 @@ fun LoadCardInfoDialog(
                                 LoadStep.INPUT_INFO -> InputInfoStepContent(
                                     existingCustomers = state.existingCustomers,
                                     useExistingData = state.useExistingData,
-                                    onUseExistingDataChange = { viewModel.setUseExistingData(it) },
+                                    onUseExistingDataChange = { loadCardInfoViewModel.setUseExistingData(it) },
                                     selectedExistingCustomer = state.selectedExistingCustomer,
                                     onSelectExistingCustomer = { customer ->
-                                        viewModel.selectExistingCustomer(customer)
+                                        loadCardInfoViewModel.selectExistingCustomer(customer)
                                     },
                                     cardId = state.cardId,
-                                    onCardIdChange = { viewModel.updateCardId(it) },
+                                    onCardIdChange = { loadCardInfoViewModel.updateCardId(it) },
                                     fullName = state.fullName,
-                                    onFullNameChange = { viewModel.updateFullName(it) },
+                                    onFullNameChange = { loadCardInfoViewModel.updateFullName(it) },
                                     cccd = state.cccd,
-                                    onCccdChange = { viewModel.updateCccd(it) },
+                                    onCccdChange = { loadCardInfoViewModel.updateCccd(it) },
                                     dob = state.dob.text,
-                                    onDobChange = { viewModel.updateDob(it) },
+                                    onDobChange = { loadCardInfoViewModel.updateDob(it) },
                                     address = state.address,
-                                    onAddressChange = { viewModel.updateAddress(it) },
+                                    onAddressChange = { loadCardInfoViewModel.updateAddress(it) },
                                     phone = state.phone,
-                                    onPhoneChange = { viewModel.updatePhone(it) },
+                                    onPhoneChange = { loadCardInfoViewModel.updatePhone(it) },
                                     cardType = state.cardType,
-                                    onCardTypeChange = { viewModel.updateCardType(it) },
+                                    onCardTypeChange = { loadCardInfoViewModel.updateCardType(it) },
                                     expiryDate = state.expiryDate,
-                                    onExpiryDateChange = { viewModel.updateExpiryDate(it) },
+                                    onExpiryDateChange = { loadCardInfoViewModel.updateExpiryDate(it) },
                                     balance = state.balance,
-                                    onBalanceChange = { viewModel.updateBalance(it) },
+                                    onBalanceChange = { loadCardInfoViewModel.updateBalance(it) },
                                     pin = state.pin,
-                                    onPinChange = { viewModel.updatePin(it) },
+                                    onPinChange = { loadCardInfoViewModel.updatePin(it) },
                                     photoBytes = state.photoBytes,
-                                    onPhotoChange = { viewModel.updatePhoto(it) },
+                                    onPhotoChange = { loadCardInfoViewModel.updatePhoto(it) },
                                     photoSizeLimitBytes = MAX_PHOTO_SIZE_BYTES,
-                                    onNext = { viewModel.validateAndNext() }
+                                    onNext = { loadCardInfoViewModel.validateAndNext() }
                                 )
 
                                 LoadStep.WRITE_DATA -> WriteDataStepContent(
@@ -211,8 +189,9 @@ fun LoadCardInfoDialog(
                                     isPhotoTooLarge = state.isPhotoTooLarge,
                                     onWrite = {
                                         coroutineScope.launch {
-                                            viewModel.writeDataToCard()
+                                            loadCardInfoViewModel.writeDataToCard()
                                         }
+
                                     }
                                 )
                             }
@@ -236,10 +215,10 @@ fun LoadCardInfoDialog(
                         LoadStep.INPUT_INFO -> true
                         LoadStep.WRITE_DATA -> true
                     }
-                    
+
                     if (showBackButton) {
                         Button(
-                            onClick = { viewModel.previousStep() },
+                            onClick = { loadCardInfoViewModel.previousStep() },
                             colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF757575))
                         ) {
                             Icon(imageVector = Icons.Default.ArrowBack, contentDescription = "Quay lại")

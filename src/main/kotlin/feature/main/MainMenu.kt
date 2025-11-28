@@ -1,4 +1,4 @@
-package core.ui.components.main
+package feature.main
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.Text
@@ -69,7 +69,7 @@ fun MainMenu(
             horizontalArrangement = Arrangement.spacedBy(AppSpacing.md)
         ) {
             MenuButton(
-                text = "Quản lý Smart Card",
+                text = "Đọc Thẻ",
                 icon = Icons.Default.AccountBox,
                 onClick = { navController.navigateTo(Screen.SmartCardManagement) },
                 modifier = Modifier.weight(1f),

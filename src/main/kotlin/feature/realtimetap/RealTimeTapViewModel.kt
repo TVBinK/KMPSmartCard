@@ -43,6 +43,20 @@ class RealTimeTapViewModel(
                         continue
                     }
 
+                    // Kiểm tra thẻ có bị khóa không
+                    if (BusCardManager.isCardBlocked) {
+                        _state.update { 
+                            it.copy(
+                                statusMessage = "⚠️ Thẻ đã bị khóa. Vui lòng mở khóa thẻ trước khi quẹt.",
+                                currentCardId = null,
+                                detectedCustomer = null,
+                                cardHandled = false
+                            )
+                        }
+                        delay(1000)
+                        continue
+                    }
+
                     val cardPresent = BusCardManager.isCardPresent
                     if (!cardPresent) {
                         if (_state.value.currentCardId != null) {
@@ -70,6 +84,19 @@ class RealTimeTapViewModel(
                     }
                     
                     cardIdResult.onSuccess { cardId ->
+                        // Kiểm tra lại thẻ có bị khóa sau khi đọc Card ID
+                        if (BusCardManager.isCardBlocked) {
+                            _state.update { 
+                                it.copy(
+                                    statusMessage = "⚠️ Thẻ đã bị khóa. Vui lòng mở khóa thẻ trước khi quẹt.",
+                                    currentCardId = null,
+                                    detectedCustomer = null,
+                                    cardHandled = false
+                                )
+                            }
+                            return@launch
+                        }
+                        
                         if (cardId.isNotEmpty() && cardId != _state.value.currentCardId) {
                             // Phát hiện thẻ mới!
                             handleNewCard(cardId)
@@ -82,13 +109,26 @@ class RealTimeTapViewModel(
                                 )
                             }
                         }
-                    }.onFailure {
-                        _state.update { 
-                            it.copy(
-                                statusMessage = "Chờ quẹt thẻ...",
-                                detectedCustomer = null,
-                                cardHandled = false
-                            )
+                    }.onFailure { error ->
+                        // Kiểm tra nếu lỗi do thẻ bị khóa
+                        val errorMessage = error.message ?: ""
+                        if (errorMessage.contains("khóa", ignoreCase = true) || BusCardManager.isCardBlocked) {
+                            _state.update { 
+                                it.copy(
+                                    statusMessage = "⚠️ Thẻ đã bị khóa. Vui lòng mở khóa thẻ trước khi quẹt.",
+                                    currentCardId = null,
+                                    detectedCustomer = null,
+                                    cardHandled = false
+                                )
+                            }
+                        } else {
+                            _state.update { 
+                                it.copy(
+                                    statusMessage = "Chờ quẹt thẻ...",
+                                    detectedCustomer = null,
+                                    cardHandled = false
+                                )
+                            }
                         }
                     }
                     

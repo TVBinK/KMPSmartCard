@@ -109,53 +109,42 @@ class ChangePinViewModel(
             )
         }
         
-        // Xác thực PIN hiện tại trước
-        val verifyResult = withContext(Dispatchers.IO) {
-            BusCardManager.checkPin(state.currentPin)
+        // Gọi updatePin với PIN cũ và PIN mới (logic checkPin đã được tích hợp trong updatePin)
+        val updateResult = withContext(Dispatchers.IO) {
+            BusCardManager.updatePin(state.currentPin, state.newPin)
         }
         
-        verifyResult.onSuccess { isCorrect ->
-            if (!isCorrect) {
-                _state.update { 
-                    it.copy(
-                        isLoading = false,
-                        errorMessage = "PIN hiện tại không đúng",
-                        currentPin = ""
-                    )
-                }
-                return
+        // Cập nhật số lần thử còn lại và trạng thái khóa
+        val attemptsRemaining = 4 - BusCardManager.pinAttempts
+        val isBlocked = BusCardManager.isCardBlocked
+        
+        _state.update { 
+            it.copy(
+                isLoading = false,
+                attemptsRemaining = attemptsRemaining,
+                isCardBlocked = isBlocked
+            )
+        }
+        
+        updateResult.onSuccess {
+            _state.update { 
+                it.copy(
+                    successMessage = "Đã thay đổi PIN thành công!",
+                    currentPin = "",
+                    newPin = "",
+                    confirmPin = "",
+                    attemptsRemaining = 4,
+                    isCardBlocked = false
+                )
             }
-            
-            // PIN đúng, tiếp tục đổi PIN
-            val updateResult = withContext(Dispatchers.IO) {
-                BusCardManager.updatePin(state.newPin)
-            }
-            
-            _state.update { it.copy(isLoading = false) }
-            
-            updateResult.onSuccess {
-                _state.update { 
-                    it.copy(
-                        successMessage = "Đã thay đổi PIN thành công!",
-                        currentPin = "",
-                        newPin = "",
-                        confirmPin = ""
-                    )
-                }
-                onSuccess()
-            }.onFailure { error ->
-                _state.update { 
-                    it.copy(
-                        errorMessage = error.message ?: "Không thể thay đổi PIN"
-                    )
-                }
-            }
+            onSuccess()
         }.onFailure { error ->
             _state.update { 
                 it.copy(
-                    isLoading = false,
-                    errorMessage = error.message ?: "PIN hiện tại không đúng",
-                    currentPin = ""
+                    errorMessage = error.message ?: "Không thể thay đổi PIN",
+                    currentPin = "",
+                    attemptsRemaining = attemptsRemaining,
+                    isCardBlocked = isBlocked
                 )
             }
         }

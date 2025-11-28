@@ -1,11 +1,11 @@
-package feature.smartcard
+package feature.readcard
 
 import core.model.Customer
 
 /**
  * State của SmartCardManagementScreen
  */
-data class SmartCardManagementState(
+data class ReadSmartCardState(
     val customers: List<Customer> = emptyList(),
     val selectedCustomer: Customer? = null,
     val transactions: List<Map<String, Any>> = emptyList(),
@@ -13,6 +13,9 @@ data class SmartCardManagementState(
     val isConnected: Boolean = false,
     val cardReaderStatus: String = "Chưa kết nối",
     val isReadingCard: Boolean = false,
-    val showChangePinDialog: Boolean = false
+    val showChangePinDialog: Boolean = false,
+    val isCardBlocked: Boolean = false,
+    val isUnlockingCard: Boolean = false,
+    val actionMessage: String = ""
 )
 
