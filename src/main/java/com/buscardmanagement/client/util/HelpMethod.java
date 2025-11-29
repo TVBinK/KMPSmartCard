@@ -74,49 +74,4 @@ public class HelpMethod {
             return null;
         }
     }
-
-    public static String generateRandomString(int length) {
-        String characters = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-        Random random = new Random();
-        StringBuilder sb = new StringBuilder(length);
-        
-        for (int i = 0; i < length; i++) {
-            int index = random.nextInt(characters.length());
-            sb.append(characters.charAt(index));
-        }
-        
-        return sb.toString();
-    }
-
-    public static boolean verifySignature(byte[] publicKeyBytes, byte[] dataToVerify, byte[] signedData) throws Exception {
-        try {
-            short expLen = ByteBuffer.wrap(new byte[]{
-                publicKeyBytes[publicKeyBytes.length - 2], 
-                publicKeyBytes[publicKeyBytes.length - 1]
-            }).getShort();
-            
-            short modLen = ByteBuffer.wrap(new byte[]{
-                publicKeyBytes[publicKeyBytes.length - 4], 
-                publicKeyBytes[publicKeyBytes.length - 3]
-            }).getShort();
-
-            byte[] modulusBytes = Arrays.copyOfRange(publicKeyBytes, 0, modLen);
-            byte[] exponentBytes = Arrays.copyOfRange(publicKeyBytes, modLen, modLen + expLen);
-
-            BigInteger modulus = new BigInteger(1, modulusBytes);
-            BigInteger exponent = new BigInteger(1, exponentBytes);
-
-            RSAPublicKeySpec publicKeySpec = new RSAPublicKeySpec(modulus, exponent);
-            PublicKey publicKey = KeyFactory.getInstance("RSA").generatePublic(publicKeySpec);
-
-            Signature rsaSign = Signature.getInstance("MD5withRSA");
-            rsaSign.initVerify(publicKey);
-            rsaSign.update(dataToVerify);
-            
-            return rsaSign.verify(signedData);
-        } catch (Exception e) {
-            System.err.println("Loi xac thuc chu ky: " + e.getMessage());
-            throw e;
-        }
-    }
 }

@@ -36,14 +36,11 @@ class ReadSmartCardViewModel {
     }
     
     init {
-        // Khi khởi động: chỉ kiểm tra kết nối + trạng thái khóa, không còn load khách hàng từ DB
+        // Khi khởi động: chỉ kiểm tra kết nối + trạng thái khóa
+        // Việc đọc thẻ sẽ được thực hiện khi dialog mở (onDialogOpened)
         viewModelScope.launch {
             checkConnectionStatusInternal()
             refreshLockStatus()
-            // Tự động đọc thẻ nếu đã kết nối
-            if (_state.value.isConnected) {
-                autoReadCardInternal()
-            }
         }
     }
     

@@ -51,8 +51,7 @@ dependencies {
     
     // Optional: JSON processing (nếu cần)
     implementation("com.google.code.gson:gson:2.10.1")
-    
-    
+
     // SQLite JDBC Driver
     implementation("org.xerial:sqlite-jdbc:3.45.0.0")
     

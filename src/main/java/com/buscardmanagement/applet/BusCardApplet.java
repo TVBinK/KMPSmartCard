@@ -138,11 +138,15 @@ public class BusCardApplet extends Applet {
         tempBuffer = new byte[TEMP_BUFFER_SIZE];
 
         try {
+            // Lấy đối tượng sinh số ngẫu nhiên bảo mật (ALG_SECURE_RANDOM).
             RandomData randomGen = RandomData.getInstance(RandomData.ALG_SECURE_RANDOM);
+            // Tạo ngẫu nhiên 16 byte vào aesKeyBytes → đây là khóa AES bí mật, chỉ nằm trong thẻ.
             randomGen.generateData(aesKeyBytes, (short)0, (short)aesKeyBytes.length);
+            // Ghi ngẫu nhiên 16 byte vào aesIV
             randomGen.generateData(aesIV, (short)0, (short)aesIV.length);
-
+            // tạo vùng nhớ cho khóa AES-128
             aesKey = (AESKey)KeyBuilder.buildKey(KeyBuilder.TYPE_AES, KeyBuilder.LENGTH_AES_128, false);
+            // nạp 16 byte sinh ngẫu nhiên vào đối tượng aesKey
             aesKey.setKey(aesKeyBytes, (short)0);
             aesCipher = Cipher.getInstance(Cipher.ALG_AES_BLOCK_128_CBC_NOPAD, false);
         } catch (CryptoException e) {
@@ -162,7 +166,7 @@ public class BusCardApplet extends Applet {
 
         resetState();
     }
-
+    //Install applet
     public static void install(byte[] bArray, short bOffset, byte bLength) {
         new BusCardApplet().register(bArray, (short)(bOffset + 1), bArray[bOffset]);
     }
@@ -296,11 +300,7 @@ public class BusCardApplet extends Applet {
     private void updateCustomerInfo(APDU apdu) {
         byte[] buffer = apdu.getBuffer();
         short lc = apdu.setIncomingAndReceive();
-
-        if (lc == 0 || lc > MAX_CUSTOMER_INFO_LEN) {
-            ISOException.throwIt(SW_WRONG_PARAMS);
-        }
-
+        //Plaintext: buffer[ISO7816.OFFSET_CDATA] đến buffer[ISO7816.OFFSET_CDATA + lc - 1]
         customerInfoLen = encryptAes(buffer, ISO7816.OFFSET_CDATA, lc, customerInfo, (short)0);
     }
 
@@ -396,42 +396,22 @@ public class BusCardApplet extends Applet {
     }
 
     private void updatePin(APDU apdu) {
-        byte[] buffer = apdu.getBuffer();
-        short lc = apdu.setIncomingAndReceive();
-
         // Format: oldPinLength (1 byte) + oldPin + newPin
         // Trường hợp tạo PIN lần đầu (pinLen == 0): oldPinLength = 0, chỉ có newPin
         // Trường hợp đổi PIN: oldPinLength > 0, có cả oldPin và newPin
         // Tối thiểu: 1 (oldPinLength) + 1 (newPin) = 2 bytes (khi tạo PIN lần đầu)
         // Tối đa: 1 + MAX_PIN_LEN + MAX_PIN_LEN = 1 + 8 + 8 = 17 bytes
-        if (lc < 2 || lc > (short)(1 + MAX_PIN_LEN + MAX_PIN_LEN)) {
-            ISOException.throwIt(SW_WRONG_PARAMS);
-        }
+        byte[] buffer = apdu.getBuffer();
+        short lc = apdu.setIncomingAndReceive();
 
         // Đọc độ dài PIN cũ
         byte oldPinLength = buffer[ISO7816.OFFSET_CDATA];
-        if (oldPinLength > MAX_PIN_LEN) {
-            ISOException.throwIt(SW_WRONG_PARAMS);
-        }
-
         // Kiểm tra tổng độ dài hợp lệ
         short expectedLength = (short)(1 + oldPinLength);
-        if (lc < expectedLength + 1) { // Ít nhất 1 byte cho newPin
-            ISOException.throwIt(SW_WRONG_PARAMS);
-        }
-
         short newPinLength = (short)(lc - expectedLength);
-        if (newPinLength == 0 || newPinLength > MAX_PIN_LEN) {
-            ISOException.throwIt(SW_WRONG_PARAMS);
-        }
 
         // Nếu thẻ đã có PIN (pinLen != 0), phải kiểm tra PIN cũ
         if (pinLen != 0) {
-            if (oldPinLength == 0) {
-                // Thẻ đã có PIN nhưng không cung cấp PIN cũ
-                ISOException.throwIt(SW_AUTH_FAILED);
-            }
-
             // Kiểm tra PIN cũ trước
             short oldPinOffset = (short)(ISO7816.OFFSET_CDATA + 1);
             if (!pin.check(buffer, oldPinOffset, oldPinLength)) {
@@ -445,12 +425,6 @@ public class BusCardApplet extends Applet {
                 buffer[0] = pinAttempts;
                 apdu.setOutgoingAndSend((short)0, (short)1);
                 return;
-            }
-        } else {
-            // Tạo PIN lần đầu - không cần kiểm tra PIN cũ
-            // Nhưng nếu có cung cấp oldPinLength > 0 thì báo lỗi
-            if (oldPinLength > 0) {
-                ISOException.throwIt(SW_WRONG_PARAMS);
             }
         }
 
@@ -477,11 +451,6 @@ public class BusCardApplet extends Applet {
 
         short lc = (short)(buffer[ISO7816.OFFSET_LC] & 0xFF);
         short dataOffset = ISO7816.OFFSET_CDATA;
-        if (lc == 0) {
-            // Extended length: 3-byte Lc (00 HH LL), dữ liệu bắt đầu sau 2 byte HH LL
-            lc = readExtendedLc(buffer);
-            dataOffset = (short)(ISO7816.OFFSET_CDATA + 2);
-        }
 
         // Đọc plaintext image vào tempBuffer trước
         // Giới hạn plaintext để sau khi mã hóa vẫn nằm trong MAX_PICTURE_LEN
@@ -497,10 +466,7 @@ public class BusCardApplet extends Applet {
         short bytesRead = apdu.setIncomingAndReceive();
 
         while (bytesRead > 0) {
-            if ((short)(totalRead + bytesRead) > maxPlaintextLen) {
-                ISOException.throwIt(SW_WRONG_PARAMS);
-            }
-
+            //Copy bytes từ buffer[] vào picture[]
             Util.arrayCopyNonAtomic(buffer, dataOffset, picture, totalRead, bytesRead);
             totalRead = (short)(totalRead + bytesRead);
 
@@ -512,11 +478,9 @@ public class BusCardApplet extends Applet {
             dataOffset = ISO7816.OFFSET_CDATA;
             bytesRead = apdu.receiveBytes(ISO7816.OFFSET_CDATA);
         }
-
-        if (totalRead != lc) {
+        if (totalRead != lc) {  // Kiểm tra xem có bị đọc thiếu byte
             ISOException.throwIt(SW_WRONG_PARAMS);
         }
-
         // Mã hóa AES plaintext image
         // picture hiện tại chứa plaintext từ offset 0, length = totalRead
         // Mã hóa trực tiếp vào chính picture array (overwrite) với padding tại chỗ
@@ -550,13 +514,10 @@ public class BusCardApplet extends Applet {
             ISOException.throwIt(SW_CARD_NOT_INITIALIZED);
         }
 
-        // Nếu ảnh đang ở dạng ciphertext, giải mã một lần sang plaintext
+        // Nếu ảnh đang ở dạng ciphertext, giải mã một lần sang plaintext mỗi trunk lại giải mã lại
         if (isPictureEncrypted) {
             try {
                 short plaintextLenDecoded = decryptAesPicture(picture, (short)0, pictureLen);
-                if (plaintextLenDecoded <= 0 || plaintextLenDecoded > MAX_PICTURE_LEN) {
-                    ISOException.throwIt(SW_WRONG_PARAMS);
-                }
                 // Từ giờ trở đi, picture chứa plaintext, pictureLen là độ dài thực
                 pictureLen = plaintextLenDecoded;
                 isPictureEncrypted = false;
@@ -567,25 +528,14 @@ public class BusCardApplet extends Applet {
         }
 
         short plaintextLen = pictureLen;
-        if (plaintextLen <= 0 || plaintextLen > MAX_PICTURE_LEN) {
-            ISOException.throwIt(SW_WRONG_PARAMS);
-        }
-
         byte[] buffer = apdu.getBuffer();
-
+        //Đọc P1, P2 từ APDU buffer, sau đó ghép lại thành offset
         // P1|P2 là offset trong ảnh plaintext
         short offset = (short)(((short)(buffer[ISO7816.OFFSET_P1] & 0xFF) << 8)
                              |  (short)(buffer[ISO7816.OFFSET_P2] & 0xFF));
 
-        if (offset < 0 || offset >= plaintextLen) {
-            ISOException.throwIt(SW_WRONG_PARAMS);
-        }
-
         // Số byte còn lại từ offset đến cuối ảnh
         short remaining = (short)(plaintextLen - offset);
-        if (remaining <= 0) {
-            ISOException.throwIt(SW_WRONG_PARAMS);
-        }
 
         // Không dùng setOutgoing() để tránh vấn đề với extended-length / case APDU.
         // Mỗi chunk gửi tối đa 240 byte (an toàn với kích thước buffer APDU).
@@ -595,10 +545,6 @@ public class BusCardApplet extends Applet {
             toSend = maxChunkSize;
         }
 
-        if (toSend <= 0) {
-            ISOException.throwIt(SW_WRONG_PARAMS);
-        }
-
         // Copy từ picture[offset] -> buffer[0..toSend-1] và gửi
         Util.arrayCopyNonAtomic(picture, offset, buffer, (short)0, toSend);
         apdu.setOutgoingAndSend((short)0, toSend);
@@ -606,10 +552,6 @@ public class BusCardApplet extends Applet {
     
     // Phương thức mã hóa AES cho ảnh lớn (mã hóa trực tiếp vào cùng array)
     private short encryptAesPicture(byte[] plaintext, short ptOffset, short ptLength) {
-        if (aesCipher == null || aesKey == null) {
-            ISOException.throwIt(SW_CARD_NOT_INITIALIZED);
-        }
-        
         // Tính độ dài sau khi padding (phải là bội số của 16)
         short paddedLength = computePaddedLength(ptLength);
         if (paddedLength > MAX_PICTURE_LEN) {
@@ -749,17 +691,17 @@ public class BusCardApplet extends Applet {
 
     private short encryptAes(byte[] plaintext, short ptOffset, short ptLength,
                              byte[] ciphertext, short ctOffset) {
+        // Nếu aesCipher hoặc aesKey chưa init → ném SW_CARD_NOT_INITIALIZED.
         if (aesCipher == null || aesKey == null) {
             ISOException.throwIt(SW_CARD_NOT_INITIALIZED);
         }
-
+        //gọi hàm tính độ dài sau khi padding
         short paddedLength = computePaddedLength(ptLength);
-        if (paddedLength > TEMP_BUFFER_SIZE) {
-            ISOException.throwIt(SW_WRONG_PARAMS);
-        }
-
+        // Copy plaintext từ plaintext[ptOffset .. ptOffset+ptLength-1] sang tempBuffer[0 .. ptLength-1].
         Util.arrayCopyNonAtomic(plaintext, ptOffset, tempBuffer, (short)0, ptLength);
+        // tính số byte padding
         byte paddingValue = (byte)(paddedLength - ptLength);
+        //Fill phần còn lại tempBuffer[ptLength .. paddedLength-1] = paddingValue.
         for (short i = ptLength; i < paddedLength; i++) {
             tempBuffer[i] = paddingValue;
         }
@@ -783,6 +725,8 @@ public class BusCardApplet extends Applet {
     }
 
     private short computePaddedLength(short length) {
+        //Nếu ptLength đã bội số của 16 → paddedLength = length + 16 (thêm 1 block padding).
+        //Nếu không → cộng thêm cho đủ bội số 16.
         short remainder = (short)(length % AES_BLOCK_SIZE);
         short padded = (short)(length + (short)(AES_BLOCK_SIZE - remainder));
         if (remainder == 0) {

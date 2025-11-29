@@ -572,17 +572,15 @@ public class BusSmartCard {
             System.out.println("[BusSmartCard] Bat dau doc anh theo chunk...");
 
             for (int i = 0; i < MAX_CHUNKS && totalRead < MAX_TOTAL; i++) {
+                // Tính P1, P2 từ offset
+                // p1: dịch phải 8 bit để lấy byte cao và giữ lại 8 bit thấp
+                // p2: lấy 8 bit thấp
                 byte p1 = (byte) ((offset >> 8) & 0xFF);
                 byte p2 = (byte) (offset & 0xFF);
 
                 // Le = 0x00: xin tối đa card cho phép trong 1 response
                 byte[] command = new byte[]{(byte) 0x00, (byte) 0x23, p1, p2, (byte) 0x00};
                 ResponseAPDU resp = sendCommandAPDU(command);
-
-                if (resp == null) {
-                    System.err.println("[BusSmartCard] Khong co phan hoi tu the khi doc chunk anh");
-                    break;
-                }
 
                 int sw = resp.getSW();
                 byte[] data = resp.getData();
@@ -592,36 +590,12 @@ public class BusSmartCard {
                         ", SW=0x" + String.format("%04X", sw) +
                         ", len=" + (data != null ? data.length : 0));
 
-                // Thẻ chưa có ảnh
-                if (sw == 0x6A88) {
-                    System.out.println("[BusSmartCard] The chua co anh (SW=0x6A88)");
-                    return null;
-                }
-
-                // Sai tham số / offset vượt quá độ dài ảnh -> coi như đã đọc xong
-                if (sw != 0x9000) {
-                    System.out.println("[BusSmartCard] Dung doc anh do SW khong phai 0x9000 (0x" +
-                            String.format("%04X", sw) + ")");
-                    break;
-                }
-
-                if (data == null || data.length == 0) {
-                    // Không còn dữ liệu
-                    System.out.println("[BusSmartCard] Khong co du lieu (data length = 0), ket thuc doc anh");
-                    break;
-                }
-
                 chunks.add(data);
                 totalRead += data.length;
                 offset += data.length;
 
                 // Không dừng theo kích thước chunk; tiếp tục cho tới khi thẻ trả SW khác 0x9000
                 // hoặc data.length == 0 ở vòng lặp sau.
-            }
-
-            if (chunks.isEmpty()) {
-                System.err.println("[BusSmartCard] Khong doc duoc chunk anh nao");
-                return null;
             }
 
             System.out.println("[BusSmartCard] Tong so chunks: " + chunks.size() +

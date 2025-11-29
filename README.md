@@ -46,6 +46,17 @@ Khi user bấm click Kết nối Java Card -> gọi onConnect(trong ConnectStep)
                               -> BusCardManager.connect() -> connectCard (BusSmartCard.java)
                         
 Khi user bấm đọc thẻ -> gọi readSmartCardViewModel.onDialogOpened (trong ReadSmartCardDialog) -> ReadSmartCardViewModel.autoReadCardInternal()
+                     -> BusSmartCard.getCustomerInfo(),...
+Buffer APDU là bộ nhớ tạm (RAM) để lưu dữ liệu tạm thời dưới dạng byte array
+ISO7816.OFFSET_CDATA là một hằng số định nghĩa vị trí (offset) trong buffer APDU
+Quy trình ghi ảnh:
+- Client gửi 1 APDU command duy nhất
+- Applet sẽ nhận APDU và Đọc dữ liệu theo chunk, Kiểm tra tính toàn vẹn xem dữ liệu bị đọc thiếu không,
+  Mã hóa → ciphertext, cuối cùng lưu vào EPROM
+Quy trình đọc ảnh: 
+- Client gửi nhiều APDU commands, mỗi command yêu cầu một chunk bắt đầu từ offset cụ thể (tính P1,P2 từ offset)
+- Applet sẽ nhận APDU và giải mã AES (chỉ lần đầu tiên), tính offset từ P1, P2, . Sau đó Copy picture[offset..offset+toSend-1] để gửi chunk về client
+- Client sẽ lưu chunk vào list sau đó qua nhiều lần sẽ ghép các chunk lại và tạo lại ảnh từ bytes
 ```
 
 ## Luồng Trao Đổi Dữ Liệu
