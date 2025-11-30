@@ -9,7 +9,6 @@ import feature.readcard.ReadSmartCardDialog
 import feature.ticketvalidation.TicketValidationDialog
 import core.model.Customer
 import core.model.ExtensionRequest
-import core.model.TapType
 import core.ui.dialogs.CustomerCardInfoDialog
 import core.ui.dialogs.DeleteConfirmDialog
 import core.ui.dialogs.EditCustomerDialog
@@ -25,7 +24,7 @@ fun NavigationHost(
     onCustomerUpdated: () -> Unit,
     onCustomerDeleted: (Customer) -> Unit,
     onTopUpCompleted: (String, Double) -> Unit,
-    onTapDetected: (String, TapType) -> Unit,
+    onTapDetected: (String) -> Unit,
     onExtensionRequest: (ExtensionRequest) -> Unit,
     onCardDataWritten: () -> Unit = {}
 ) {
@@ -81,8 +80,8 @@ fun NavigationHost(
         is Screen.RealTimeTap -> {
             RealTimeTapDialog(
                 onDismiss = { navController.navigateBack() },
-                onTapDetected = { cardId, tapType -> 
-                    onTapDetected(cardId, tapType)
+                onTapDetected = { cardId -> 
+                    onTapDetected(cardId)
                 }
             )
         }

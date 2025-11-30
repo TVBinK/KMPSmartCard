@@ -20,7 +20,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import core.model.TapType
 import core.ui.components.CustomCard
 import core.ui.components.CustomDivider
 import java.time.format.DateTimeFormatter
@@ -32,7 +31,7 @@ import java.time.format.DateTimeFormatter
 @Composable
 fun RealTimeTapDialog(
     onDismiss: () -> Unit,
-    onTapDetected: (String, TapType) -> Unit
+    onTapDetected: (String) -> Unit
 ) {
     // Khởi tạo ViewModel
     val realTimeTapViewModel = remember { RealTimeTapViewModel(onTapDetected) }

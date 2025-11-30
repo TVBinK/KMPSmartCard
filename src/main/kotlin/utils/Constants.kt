@@ -5,7 +5,6 @@ package utils
  */
 object AppConstants {
     // Giá vé
-    const val NORMAL_CARD_TAP_AMOUNT = 7000.0
 
     // Timing
     const val INITIAL_LOAD_DELAY_MS = 500L
@@ -17,6 +16,7 @@ object AppConstants {
     const val TRANSACTION_TYPE_TAP = "TAP"
     const val TRANSACTION_TYPE_EXTEND_MONTHLY = "EXTEND_MONTHLY"
 }
+
 
 
 

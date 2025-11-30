@@ -57,6 +57,13 @@ Quy trình đọc ảnh:
 - Client gửi nhiều APDU commands, mỗi command yêu cầu một chunk bắt đầu từ offset cụ thể (tính P1,P2 từ offset)
 - Applet sẽ nhận APDU và giải mã AES (chỉ lần đầu tiên), tính offset từ P1, P2, . Sau đó Copy picture[offset..offset+toSend-1] để gửi chunk về client
 - Client sẽ lưu chunk vào list sau đó qua nhiều lần sẽ ghép các chunk lại và tạo lại ảnh từ bytes
+Lưu SQL:
+- AES-256/GCM cho dữ liệu khách hàng, RSA-2048 cho giao dịch
+- Dùng khóa từ PIN để khởi tạo cipher AES-256/GCM
+- Tạo khóa từ PIN
+  PIN "1234" + Salt + PBKDF2 (65536 lần) 
+  → Khóa AES 256-bit: [a1b2c3d4...]
+- Mã hóa dữ liệu
 ```
 
 ## Luồng Trao Đổi Dữ Liệu

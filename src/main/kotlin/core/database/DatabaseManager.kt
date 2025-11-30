@@ -272,7 +272,7 @@ object DatabaseManager {
             try {
                 connection?.prepareStatement(sql)?.use { stmt ->
                     stmt.setString(1, customer.cardId)
-                    stmt.setString(2, customer.fullName) // Giữ nguyên để backward compatibility
+                    stmt.setString(2, customer.fullName)
                     stmt.setString(3, customer.cccd)
                     stmt.setString(4, customer.dob)
                     stmt.setString(5, customer.address)

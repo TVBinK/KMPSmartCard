@@ -2,17 +2,18 @@ package feature.realtimetap
 
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
-import core.model.TapType
+import core.model.CardType
 import core.database.DatabaseManager
 import smartcard.BusCardManager
+import utils.AppConstants
 import java.time.LocalDateTime
 
 /**
  * ViewModel cho RealTimeTapScreen
- * Quản lý logic polling và phát hiện thẻ
+ * Quản lý logic polling, phát hiện thẻ và xử lý quét thẻ
  */
 class RealTimeTapViewModel(
-    private val onTapDetected: (String, TapType) -> Unit
+    private val onTapDetected: (String) -> Unit
 ) {
     
     private val viewModelScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
@@ -24,13 +25,13 @@ class RealTimeTapViewModel(
     private var pollingJob: Job? = null
     
     init {
-        startPolling()
+        startTap()
     }
     
     /**
-     * Bắt đầu polling để phát hiện thẻ
+     * Bắt đầu để phát hiện thẻ
      */
-    fun startPolling() {
+    fun startTap() {
         if (pollingJob?.isActive == true) return
         
         pollingJob = viewModelScope.launch {
@@ -40,41 +41,6 @@ class RealTimeTapViewModel(
                     if (!BusCardManager.isConnected) {
                         _state.update { it.copy(statusMessage = "⚠️ Chưa kết nối với Java Card") }
                         delay(1000)
-                        continue
-                    }
-
-                    // Kiểm tra thẻ có bị khóa không
-                    if (BusCardManager.isCardBlocked) {
-                        _state.update { 
-                            it.copy(
-                                statusMessage = "⚠️ Thẻ đã bị khóa. Vui lòng mở khóa thẻ trước khi quẹt.",
-                                currentCardId = null,
-                                detectedCustomer = null,
-                                cardHandled = false
-                            )
-                        }
-                        delay(1000)
-                        continue
-                    }
-
-                    val cardPresent = BusCardManager.isCardPresent
-                    if (!cardPresent) {
-                        if (_state.value.currentCardId != null) {
-                            _state.update { 
-                                it.copy(
-                                    statusMessage = "Đang chờ quẹt thẻ...",
-                                    currentCardId = null,
-                                    detectedCustomer = null,
-                                    cardHandled = false
-                                )
-                            }
-                        }
-                        delay(300)
-                        continue
-                    }
-                    
-                    if (_state.value.cardHandled) {
-                        delay(300)
                         continue
                     }
                     
@@ -153,7 +119,7 @@ class RealTimeTapViewModel(
             )
         }
         
-        // Load thông tin khách hàng
+        // Load thông tin khách hàng từ DB
         val customer = withContext(Dispatchers.IO) {
             DatabaseManager.getAllCustomers().find { it.cardId == cardId }
         }
@@ -165,33 +131,129 @@ class RealTimeTapViewModel(
                     statusMessage = "✓ ${customer.fullName}"
                 )
             }
-        } else {
-            _state.update { 
-                it.copy(
-                    detectedCustomer = null,
-                    statusMessage = "✓ Đã phát hiện thẻ: $cardId"
-                )
-            }
+            
+            // Xử lý quét thẻ
+            handleCardTap(cardId, customer)
         }
         
-        // Xác định loại tap (TAP_ON hoặc TAP_OFF)
-        val tapType = TapType.TAP_ON // Simplified
-        
-        // Callback để parent xử lý
-        onTapDetected(cardId, tapType)
+        // Callback để parent refresh data nếu cần
+        // Chỉ cần quẹt thẻ 1 lần khi lên xe
+        onTapDetected(cardId)
     }
     
     /**
-     * Toggle listening state
+     * Xử lý quẹt thẻ
      */
-    fun toggleListening() {
-        val newState = !_state.value.isListening
-        _state.update { it.copy(isListening = newState) }
+    private suspend fun handleCardTap(cardId: String, customer: core.model.Customer) {
+        // Kiểm tra thẻ có bị khóa không
+        if (BusCardManager.isCardBlocked) {
+            _state.update { 
+                it.copy(
+                    statusMessage = "⚠️ Không thể quẹt thẻ: Thẻ đã bị khóa"
+                )
+            }
+            return
+        }
         
-        if (newState) {
-            startPolling()
-        } else {
-            stopPolling()
+        when (customer.cardType) {
+            CardType.MONTHLY -> {
+                val updatedCustomer = customer.checkAndConvertExpiredMonthlyCard()
+                
+                if (updatedCustomer.cardType != customer.cardType) {
+                    // Thẻ tháng đã hết hạn, chuyển về thẻ thường
+                    DatabaseManager.updateCustomer(updatedCustomer)
+                    val convertedCustomer = withContext(Dispatchers.IO) {
+                        DatabaseManager.getCustomerByCardId(cardId)
+                    }
+                    if (convertedCustomer != null && convertedCustomer.balance >= 7000.0) {
+                        processNormalCardTap(convertedCustomer, "đã chuyển từ thẻ tháng")
+                    } else {
+                        _state.update { 
+                            it.copy(
+                                statusMessage = "⚠️ Số dư không đủ để quẹt thẻ"
+                            )
+                        }
+                    }
+                } else {
+                    // Thẻ tháng còn hạn, miễn phí
+                    DatabaseManager.insertTransaction(
+                        cardId = cardId,
+                        transactionType = AppConstants.TRANSACTION_TYPE_TAP,
+                        amount = 0.0,
+                        balanceBefore = customer.balance,
+                        balanceAfter = customer.balance,
+                        description = "Quẹt thẻ tháng - Miễn phí (còn hạn đến ${customer.expiryDate})"
+                    )
+                    _state.update { 
+                        it.copy(
+                            statusMessage = "✓ Quẹt thẻ tháng thành công - Miễn phí"
+                        )
+                    }
+                }
+            }
+            CardType.NORMAL -> {
+                if (customer.balance >= 7000.0) {
+                    processNormalCardTap(customer)
+                } else {
+                    _state.update { 
+                        it.copy(
+                            statusMessage = "⚠️ Số dư không đủ để quẹt thẻ (Cần: ${String.format("%,.0f", 7000.0)} VNĐ)"
+                        )
+                    }
+                }
+            }
+        }
+    }
+    
+    /**
+     * Xử lý quẹt thẻ thường
+     */
+    private suspend fun processNormalCardTap(customer: core.model.Customer, prefix: String = "") {
+        val tapAmount = 7000.0
+        val balanceBefore = customer.balance
+        val balanceAfter = balanceBefore - tapAmount
+        
+        // Cập nhật database
+        DatabaseManager.updateCustomerBalance(customer.cardId, balanceAfter)
+        
+        // Trừ tiền trên smart card nếu đã kết nối
+        if (BusCardManager.isConnected) {
+            withContext(Dispatchers.IO) {
+                BusCardManager.deductBalance(tapAmount)
+                    .onSuccess { 
+                        println("Da tru tien tu Smart Card: ${String.format("%,.0f", tapAmount)} VND")
+                    }
+                    .onFailure { 
+                        println("Loi tru tien tu Smart Card: ${it.message}")
+                    }
+            }
+        }
+        
+        // Tạo description
+        val description = "Quẹt thẻ thường - Trừ ${String.format("%,.0f", tapAmount)} VNĐ" +
+                         if (prefix.isNotEmpty()) " ($prefix)" else ""
+        
+        // Lưu transaction
+        DatabaseManager.insertTransaction(
+            cardId = customer.cardId,
+            transactionType = AppConstants.TRANSACTION_TYPE_TAP,
+            amount = tapAmount,
+            balanceBefore = balanceBefore,
+            balanceAfter = balanceAfter,
+            description = description
+        )
+        
+        // Cập nhật state với thông tin mới
+        val updatedCustomer = withContext(Dispatchers.IO) {
+            DatabaseManager.getCustomerByCardId(customer.cardId)
+        }
+        if (updatedCustomer != null) {
+            _state.update { 
+                it.copy(
+                    detectedCustomer = updatedCustomer,
+                    statusMessage = "✓ Quẹt thẻ thành công - Trừ ${String.format("%,.0f", tapAmount)} VNĐ"
+                )
+            }
         }
     }
     

@@ -117,9 +117,11 @@ fun MainApp() {
             onTopUpCompleted = { cardId, amount ->
                 mainViewModel.handleTopUpTransaction(cardId, amount)
             },
-            onTapDetected = { cardId, _ ->
+            onTapDetected = { cardId ->
+                // RealTimeTapViewModel đã tự xử lý quét thẻ
+                // Chỉ cần refresh customers để cập nhật UI
                 coroutineScope.launch {
-                    mainViewModel.handleCardTap(cardId)
+                    mainViewModel.refreshCustomers()
                 }
             },
             onExtensionRequest = { request ->
