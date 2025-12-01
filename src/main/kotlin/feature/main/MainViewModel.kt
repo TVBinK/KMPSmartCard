@@ -73,7 +73,7 @@ class MainViewModel {
     /**
      * Cập nhật hoạt động gần đây
      */
-    private suspend fun updateRecentActivities(customers: List<Customer>) {
+    private fun updateRecentActivities(customers: List<Customer>) {
         val activities = customers.flatMap { customer ->
             DatabaseManager.getTransactionsByCardId(customer.cardId).map { trans ->
                 trans.toMutableMap().apply {
@@ -210,10 +210,10 @@ class MainViewModel {
             if (BusCardManager.isConnected) {
                 val infoResult = BusCardManager.updateCustomerInfo(
                     fullName = customer.fullName,
-                    customerType = customer.customerType.displayName,
+                    customerType = "Khách hàng",
                     expiryDate = newExpiry.format(formatter),
                     cardType = CardType.MONTHLY.displayName,
-                    linkedCustomerId = customer.linkedCustomerCode,
+                    linkedCustomerId = "",
                     cccd = customer.cccd,
                     dob = customer.dob,
                     address = customer.address,

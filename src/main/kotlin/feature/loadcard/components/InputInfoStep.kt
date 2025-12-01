@@ -25,10 +25,9 @@ import androidx.compose.ui.unit.sp
 import core.model.CardType
 import core.model.Customer
 import core.ui.components.formatDateOfBirth
-import java.io.ByteArrayOutputStream
+import java.io.File
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
-import javax.imageio.ImageIO
 import javax.swing.JFileChooser
 import javax.swing.filechooser.FileNameExtensionFilter
 
@@ -62,6 +61,7 @@ fun InputInfoStepContent(
     onPinChange: (String) -> Unit,
     photoBytes: ByteArray?,
     onPhotoChange: (ByteArray?) -> Unit,
+    onPhotoFileSelected: (File) -> Unit,
     photoSizeLimitBytes: Int,
     onNext: () -> Unit
 ) {
@@ -182,7 +182,7 @@ fun InputInfoStepContent(
                                 Column {
                                     Text(customer.fullName, fontWeight = FontWeight.Bold, fontSize = 13.sp)
                                     Text(
-                                        "${customer.customerType.displayName} - ${customer.cardType.displayName}",
+                                        customer.cardType.displayName,
                                         fontSize = 11.sp,
                                         color = Color.Gray
                                     )
@@ -617,22 +617,8 @@ fun InputInfoStepContent(
                                 val result = fileChooser.showOpenDialog(null)
                                 if (result == JFileChooser.APPROVE_OPTION) {
                                     val file = fileChooser.selectedFile
-                                    try {
-                                        val image = ImageIO.read(file)
-                                        // Không resize nữa, chỉ nén JPEG để giữ kích thước hợp lý
-                                        val baos = ByteArrayOutputStream()
-                                        ImageIO.write(image, "jpg", baos)
-                                        val bytes = baos.toByteArray()
-                                        println("Anh JPEG goc: ${bytes.size} bytes (${image.width}x${image.height})")
-                                        
-                                        if (bytes.size > 51200) {
-                                            println("Canh bao: Anh co kich thuoc ${bytes.size} bytes (> 50KB), co the cham khi ghi vao the")
-                                        }
-                                        
-                                        onPhotoChange(bytes)
-                                    } catch (e: Exception) {
-                                        e.printStackTrace()
-                                    }
+                                    // Gọi callback để ViewModel xử lý
+                                    onPhotoFileSelected(file)
                                 }
                             },
                             colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF2196F3))

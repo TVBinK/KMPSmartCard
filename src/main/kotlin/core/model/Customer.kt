@@ -3,13 +3,6 @@ package core.model
 import java.time.LocalDate
 
 /**
- * Loại đối tượng khách hàng
- */
-enum class CustomerType(val displayName: String) {
-    CUSTOMER("Khách hàng")
-}
-
-/**
  * Loại thẻ
  */
 enum class CardType(val displayName: String) {
@@ -27,12 +20,10 @@ data class Customer(
     val dob: String = "",  // Ngày sinh (dd/MM/yyyy)
     val address: String = "",  // Địa chỉ hiện tại
     val phone: String = "",  // Số điện thoại (10 digits)
-    val customerType: CustomerType = CustomerType.CUSTOMER,
     val cardType: CardType = CardType.NORMAL,  // Mặc định Thẻ Thường
     val expiryDate: LocalDate = LocalDate.now().plusMonths(1),
     val balance: Double = 0.0,
     val cardId: String = "",
-    val linkedCustomerCode: String = "",
     val photoPath: String? = null,
     val photoBytes: ByteArray? = null
 ) {

@@ -31,7 +31,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import core.model.CardType
 import core.model.Customer
-import core.model.CustomerType
 import core.ui.AppColors
 import core.ui.AppRadius
 import core.ui.AppSpacing
@@ -274,12 +273,10 @@ fun CustomerListItemPreview() {
             dob = "01/01/2000",
             address = "Hà Nội",
             phone = "0987654321",
-            customerType = CustomerType.CUSTOMER,
             cardType = CardType.MONTHLY,
             expiryDate = LocalDate.now().plusMonths(6),
             balance = 150000.0,
             cardId = "CARD-001",
-            linkedCustomerCode = "SV001",
             photoPath = null,
             photoBytes = null
         )

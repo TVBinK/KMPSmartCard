@@ -96,26 +96,12 @@ fun MainMenu(
         ) {
             MenuButton(
                 text = "Quẹt thẻ tự động",
-                icon = Icons.Default.Star,
+                icon = Icons.Default.PlayArrow,
                 onClick = { navController.navigateTo(Screen.RealTimeTap) },
                 modifier = Modifier.weight(1f),
                 enabled = isCardConnected && isCardHasData,
                 gradientStart = AppColors.OrangeGradientStart,
                 gradientEnd = AppColors.OrangeGradientEnd
-            )
-            MenuButton(
-                text = "Xác thực vé",
-                icon = Icons.Default.CheckCircle,
-                onClick = {
-                    val customer = selectedCustomer ?: customers.firstOrNull()
-                    if (customer != null) {
-                        navController.navigateTo(Screen.TicketValidation(customer))
-                    }
-                },
-                modifier = Modifier.weight(1f),
-                enabled = isCardConnected && isCardHasData && (selectedCustomer != null || customers.isNotEmpty()),
-                gradientStart = AppColors.TealGradientStart,
-                gradientEnd = AppColors.TealGradientEnd
             )
         }
     }

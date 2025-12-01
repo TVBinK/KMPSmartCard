@@ -5,29 +5,29 @@ import java.awt.image.BufferedImage
 
 /**
  * BusCardManager - Kotlin wrapper cho BusSmartCard Java client
- * 
+ *
  * Singleton object để quản lý kết nối và giao tiếp với smart card
  * Cung cấp interface dễ sử dụng cho Kotlin/Compose UI
  */
 object BusCardManager {
-    
+
     private val smartCard: BusSmartCard = BusSmartCard.getInstance()
-    
+
     // Trạng thái kết nối
     val isConnected: Boolean
         get() = smartCard.isConnected
-    
+
     val isCardBlocked: Boolean
         get() = BusSmartCard.isCardBlocked
-    
+
     val pinAttempts: Int
         get() = BusSmartCard.counter.toInt()
-    
+
     val isCardPresent: Boolean
         get() = smartCard.isCardPresent()
-    
+
     // ========== KẾT NỐI ==========
-    
+
     /**
      * Kết nối với smart card
      */
@@ -35,17 +35,19 @@ object BusCardManager {
         if (smartCard.connectCard()) {
             Result.success(true)
         } else {
-            Result.failure(Exception(
-                "Không thể kết nối với thẻ. Vui lòng đảm bảo:\n" +
-                "1. JCIDE Simulator đang chạy\n" +
-                "2. Applet đã được cài đặt trên simulator\n" +
-                "3. Hoặc kết nối Java Card thật qua PC/SC reader"
-            ))
+            Result.failure(
+                Exception(
+                    "Không thể kết nối với thẻ. Vui lòng đảm bảo:\n" +
+                            "1. JCIDE Simulator đang chạy\n" +
+                            "2. Applet đã được cài đặt trên simulator\n" +
+                            "3. Hoặc kết nối Java Card thật qua PC/SC reader"
+                )
+            )
         }
     }
-    
+
     // ========== THÔNG TIN KHÁCH HÀNG ==========
-    
+
     /**
      * Lấy thông tin khách hàng từ thẻ
      */
@@ -74,7 +76,7 @@ object BusCardManager {
             Result.failure(Exception(message))
         }
     }
-    
+
     /**
      * Cập nhật thông tin khách hàng lên thẻ
      */
@@ -95,9 +97,9 @@ object BusCardManager {
         )
         if (result) Result.success(true) else Result.failure(Exception("Không thể cập nhật thông tin khách hàng"))
     }
-    
+
     // ========== CARD ID ==========
-    
+
     /**
      * Lấy Card ID từ thẻ
      */
@@ -114,7 +116,7 @@ object BusCardManager {
             Result.failure(Exception(message))
         }
     }
-    
+
     /**
      * Cập nhật Card ID
      */
@@ -125,9 +127,9 @@ object BusCardManager {
             Result.failure(Exception("Không thể cập nhật Card ID"))
         }
     }
-    
+
     // ========== PIN ==========
-    
+
     /**
      * Cập nhật PIN
      */
@@ -137,19 +139,19 @@ object BusCardManager {
             if (isCardBlocked && oldPin.isNotEmpty()) {
                 return Result.failure(Exception("Thẻ đã bị khóa do nhập sai PIN quá nhiều lần. Vui lòng mở khóa thẻ trước."))
             }
-            
+
             // Validation cho PIN mới
             if (newPin.length < 4 || newPin.length > 6) {
                 return Result.failure(Exception("PIN mới phải có từ 4-6 chữ số"))
             }
-            
+
             // Validation cho đổi PIN (không áp dụng cho tạo PIN lần đầu)
             if (oldPin.isNotEmpty()) {
                 if (oldPin == newPin) {
                     return Result.failure(Exception("PIN mới không được trùng với PIN hiện tại"))
                 }
             }
-            
+
             val result = smartCard.updatePin(oldPin, newPin)
             if (result) {
                 Result.success(true)
@@ -171,7 +173,7 @@ object BusCardManager {
             }
         }
     }
-    
+
     /**
      * Kiểm tra PIN (với counter, khóa thẻ sau 4 lần sai)
      */
@@ -192,9 +194,9 @@ object BusCardManager {
             Result.failure(Exception("Lỗi kiểm tra PIN: ${e.message}", e))
         }
     }
-    
+
     // ========== SỐ DƯ ==========
-    
+
     /**
      * Lấy số dư
      */
@@ -206,7 +208,7 @@ object BusCardManager {
             Result.failure(Exception("Không thể đọc số dư"))
         }
     }
-    
+
     /**
      * Cập nhật số dư
      */
@@ -217,7 +219,7 @@ object BusCardManager {
             Result.failure(Exception("Không thể cập nhật số dư"))
         }
     }
-    
+
     /**
      * Trừ tiền (deduction)
      */
@@ -238,7 +240,7 @@ object BusCardManager {
             Result.failure(Exception("Lỗi trừ tiền: ${e.message}", e))
         }
     }
-    
+
     /**
      * Nạp tiền (top-up)
      */
@@ -256,35 +258,30 @@ object BusCardManager {
             Result.failure(Exception("Lỗi nạp tiền: ${e.message}", e))
         }
     }
-    
+
     // ========== ẢNH ==========
-    
+
     /**
      * Cập nhật ảnh từ byte array
-     * 
+     *
      * @param photoBytes Byte array của ảnh
      * @return Result<Boolean> - Success(true) nếu cập nhật thành công
      */
     fun updatePhotoBytes(photoBytes: ByteArray?): Result<Boolean> {
         return try {
-            if (photoBytes == null || photoBytes.isEmpty()) {
-                // Nếu không có ảnh, bỏ qua
+            val result = smartCard.updatePicture(photoBytes)
+            if (result) {
                 Result.success(true)
             } else {
-                val result = smartCard.updatePicture(photoBytes)
-                if (result) {
-                    Result.success(true)
-                } else {
-                    Result.failure(Exception("Không thể cập nhật ảnh"))
-                }
+                Result.failure(Exception("Không thể cập nhật ảnh"))
             }
         } catch (e: Exception) {
             Result.failure(Exception("Lỗi cập nhật ảnh từ bytes: ${e.message}", e))
         }
     }
-    
+
     // ========== ẢNH ==========
-    
+
     /**
      * Đọc ảnh khách hàng từ thẻ
      * Trả về Result.success với ByteArray nếu có ảnh, hoặc Result.failure nếu lỗi
@@ -299,9 +296,9 @@ object BusCardManager {
             Result.failure(Exception("Thẻ chưa có ảnh hoặc không thể đọc ảnh"))
         }
     }
-    
+
     // ========== BẢO MẬT ==========
-    
+
     /**
      * Lấy Public Key RSA
      */
@@ -317,9 +314,9 @@ object BusCardManager {
             Result.failure(Exception("Lỗi đọc public key: ${e.message}", e))
         }
     }
-    
+
     // ========== QUẢN LÝ THẺ ==========
-    
+
     /**
      * Kiểm tra thẻ đã khởi tạo chưa
      */
@@ -331,7 +328,7 @@ object BusCardManager {
             Result.failure(Exception("Lỗi kiểm tra thẻ: ${e.message}", e))
         }
     }
-    
+
     /**
      * Xóa toàn bộ dữ liệu trên thẻ
      */
@@ -341,25 +338,25 @@ object BusCardManager {
             if (!isConnected) {
                 return Result.failure(Exception("Chưa kết nối với thẻ. Vui lòng kết nối trước khi xóa."))
             }
-            
+
             // Kiểm tra thẻ có dữ liệu trước khi xóa
             println("BusCardManager.clearCard() - Kiem tra the co du lieu truoc khi xoa...")
             val hasDataBefore = smartCard.checkCardCreated()
             println("The co du lieu truoc khi xoa: $hasDataBefore")
-            
+
             if (!hasDataBefore) {
                 println("The da rong, khong can xoa")
                 return Result.success(true)
             }
-            
+
             println("BusCardManager.clearCard() - Goi smartCard.clearCard()...")
             val result = smartCard.clearCard()
             println("BusCardManager.clearCard() - Ket qua tu Java clearCard(): $result")
-            
+
             Thread.sleep(100)
             val hasDataAfter = smartCard.checkCardCreated()
             println("The co du lieu sau khi xoa: $hasDataAfter")
-            
+
             if (result) {
                 if (!hasDataAfter) {
                     println("Xoa the thanh cong - Da xac nhan the rong!")
@@ -378,7 +375,7 @@ object BusCardManager {
             Result.failure(Exception("Lỗi xóa thẻ: ${e.message}", e))
         }
     }
-    
+
     /**
      * Mở khóa thẻ khi bị nhập sai PIN quá nhiều lần
      */

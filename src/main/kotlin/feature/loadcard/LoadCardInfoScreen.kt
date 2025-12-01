@@ -170,6 +170,7 @@ fun LoadCardInfoDialog(
                                     onPinChange = { loadCardInfoViewModel.updatePin(it) },
                                     photoBytes = state.photoBytes,
                                     onPhotoChange = { loadCardInfoViewModel.updatePhoto(it) },
+                                    onPhotoFileSelected = { file -> loadCardInfoViewModel.processImageFile(file) },
                                     photoSizeLimitBytes = MAX_PHOTO_SIZE_BYTES,
                                     onNext = { loadCardInfoViewModel.validateAndNext() }
                                 )
@@ -181,7 +182,6 @@ fun LoadCardInfoDialog(
                                     dob = state.dob.text,
                                     address = state.address,
                                     phone = state.phone,
-                                    customerType = state.customerType,
                                     cardType = state.cardType,
                                     balance = state.balance,
                                     photoSizeBytes = state.photoBytes?.size ?: 0,

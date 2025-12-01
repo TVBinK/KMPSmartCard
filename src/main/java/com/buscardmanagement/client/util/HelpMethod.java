@@ -63,11 +63,9 @@ public class HelpMethod {
 
     public static byte[] convertImageToByteArray(BufferedImage image) {
         try {
-            if (image == null) {
-                return null;
-            }
             ByteArrayOutputStream baos = new ByteArrayOutputStream();
-            ImageIO.write(image, "png", baos);
+            // JPEG nén tốt hơn, phù hợp với giới hạn 32KB của smart card
+            ImageIO.write(image, "jpg", baos);
             return baos.toByteArray();
         } catch (Exception e) {
             System.err.println("Loi chuyen doi image sang byte array: " + e.getMessage());

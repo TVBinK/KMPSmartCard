@@ -89,14 +89,6 @@ fun CustomerCardInfoDialog(
                     color = Color(0xFF212121)
                 )
 
-                Spacer(modifier = Modifier.height(4.dp))
-
-                // Customer Type Label
-                Text(
-                    text = customer.customerType.displayName,
-                    fontSize = 14.sp,
-                    color = Color(0xFF757575)
-                )
 
                 Spacer(modifier = Modifier.height(24.dp))
 

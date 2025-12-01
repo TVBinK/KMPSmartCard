@@ -134,11 +134,7 @@ fun RouteDialog(
                     
                     Button(
                         onClick = {
-                            try {
                                 Desktop.getDesktop().browse(URI(mapUrl))
-                            } catch (e: Exception) {
-                                routeViewModel.updateStatusMessage("❌ Không thể mở trình duyệt")
-                            }
                         },
                         colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF2196F3)),
                         modifier = Modifier.fillMaxWidth()
@@ -164,32 +160,6 @@ fun RouteDialog(
                         color = if (state.statusMessage.contains("✓")) Color(0xFF4CAF50) else Color(0xFFF44336)
                     )
                 }
-            }
-            
-            CustomDivider()
-
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                CancelButton(
-                    text = "Hủy",
-                    onClick = onDismiss,
-                    modifier = Modifier.weight(1f)
-                )
-                
-                ConfirmButton(
-                    text = "Đóng",
-                    onClick = {
-                        if (state.selectedRoute != null && state.startPoint.isNotEmpty() && state.endPoint.isNotEmpty()) {
-                            onRouteSelected(state.selectedRoute!!.name, state.startPoint, state.endPoint)
-                        }
-                        onDismiss()
-                    },
-                    modifier = Modifier.weight(1f)
-                )
             }
         }
     }

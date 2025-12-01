@@ -6,7 +6,6 @@ import feature.payment.PaymentDialog
 import feature.realtimetap.RealTimeTapDialog
 import feature.route.RouteDialog
 import feature.readcard.ReadSmartCardDialog
-import feature.ticketvalidation.TicketValidationDialog
 import core.model.Customer
 import core.model.ExtensionRequest
 import core.ui.dialogs.CustomerCardInfoDialog
@@ -118,13 +117,6 @@ fun NavigationHost(
                     onCustomerDeleted(customer)
                     navController.navigateBack()
                 }
-            )
-        }
-        
-        is Screen.TicketValidation -> {
-            TicketValidationDialog(
-                customer = currentScreen.customer,
-                onDismiss = { navController.navigateBack() }
             )
         }
     }

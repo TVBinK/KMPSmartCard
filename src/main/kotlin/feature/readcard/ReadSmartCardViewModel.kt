@@ -2,7 +2,6 @@ package feature.readcard
 
 import core.model.Customer
 import core.model.CardType
-import core.model.CustomerType
 import core.database.DatabaseManager
 import smartcard.BusCardManager
 import smartcard.CustomerInfo
@@ -326,12 +325,10 @@ class ReadSmartCardViewModel {
             dob = info.dob,
             address = info.address,
             phone = info.phone,
-            customerType = CustomerType.CUSTOMER,
             cardType = cardType,
             expiryDate = expiryDate,
             balance = balance,
             cardId = cardId,
-            linkedCustomerCode = info.linkedCustomerId,
             photoPath = null,
             photoBytes = photoBytes
         )

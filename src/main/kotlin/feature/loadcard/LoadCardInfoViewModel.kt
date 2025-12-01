@@ -5,11 +5,13 @@ import kotlinx.coroutines.flow.*
 import androidx.compose.ui.text.input.TextFieldValue
 import core.model.CardType
 import core.model.Customer
-import core.model.CustomerType
 import core.database.DatabaseManager
 import smartcard.BusCardManager
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
+import java.io.File
+import javax.imageio.ImageIO
+import com.buscardmanagement.client.util.HelpMethod
 
 /**
  * ViewModel cho LoadCardInfoScreen
@@ -19,13 +21,13 @@ class LoadCardInfoViewModel(
     private val onSuccess: (Customer) -> Unit,
     private val onDismiss: () -> Unit
 ) {
-    
+
     private val viewModelScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
-    
+
     // State Flow
     private val _state = MutableStateFlow(LoadCardInfoState())
     val state: StateFlow<LoadCardInfoState> = _state.asStateFlow()
-    
+
     init {
         // Load danh sách khách hàng khi khởi động
         viewModelScope.launch {
@@ -33,7 +35,7 @@ class LoadCardInfoViewModel(
             checkInitialConnection()
         }
     }
-    
+
     /**
      * Load danh sách khách hàng hiện có
      */
@@ -43,13 +45,13 @@ class LoadCardInfoViewModel(
         }
         _state.update { it.copy(existingCustomers = customers) }
     }
-    
+
     /**
      * Kiểm tra trạng thái kết nối ban đầu
      */
     private fun checkInitialConnection() {
         if (BusCardManager.isConnected) {
-            _state.update { 
+            _state.update {
                 it.copy(
                     isConnected = true,
                     statusMessage = " Đã kết nối với thẻ"
@@ -57,7 +59,7 @@ class LoadCardInfoViewModel(
             }
         }
     }
-    
+
     /**
      * Kết nối với thẻ
      */
@@ -69,26 +71,26 @@ class LoadCardInfoViewModel(
             )
         }
 
-        val result = withContext(Dispatchers.IO) { 
-            BusCardManager.connect() 
+        val result = withContext(Dispatchers.IO) {
+            BusCardManager.connect()
         }
 
         _state.update { it.copy(isLoading = false) }
-        
+
         result.onSuccess {
-            _state.update { 
+            _state.update {
                 it.copy(
                     isConnected = true,
                     statusMessage = "Đã kết nối với thẻ"
                 )
             }
         }.onFailure { error ->
-            _state.update { 
-                it.copy(statusMessage = "✗ ${error.message}") 
+            _state.update {
+                it.copy(statusMessage = "✗ ${error.message}")
             }
         }
     }
-    
+
     /**
      * Chuyển sang bước tiếp theo
      */
@@ -102,7 +104,7 @@ class LoadCardInfoViewModel(
         }
         _state.update { it.copy(currentStep = nextStep) }
     }
-    
+
     /**
      * Quay lại bước trước
      */
@@ -116,34 +118,34 @@ class LoadCardInfoViewModel(
         }
         _state.update { it.copy(currentStep = prevStep) }
     }
-    
+
     /**
      * Kiểm tra thẻ
      */
     suspend fun checkCard() {
-        _state.update { 
+        _state.update {
             it.copy(
                 isLoading = true,
                 statusMessage = "Đang kiểm tra thẻ..."
             )
         }
-        
+
         val checkResult = withContext(Dispatchers.IO) {
             BusCardManager.checkCardCreated()
         }
-        
+
         _state.update { it.copy(isLoading = false) }
 
         checkResult.onSuccess { hasData ->
             if (hasData) {
-                _state.update { 
+                _state.update {
                     it.copy(
                         statusMessage = "⚠ Thẻ đã có dữ liệu. Vui lòng xóa dữ liệu cũ trước",
                         isCardEmpty = false
                     )
                 }
             } else {
-                _state.update { 
+                _state.update {
                     it.copy(
                         statusMessage = "✓ Thẻ rỗng, sẵn sàng nạp dữ liệu",
                         isCardEmpty = true,
@@ -155,24 +157,24 @@ class LoadCardInfoViewModel(
             _state.update { it.copy(statusMessage = "✗ ${error.message}") }
         }
     }
-    
+
     /**
      * Xóa dữ liệu thẻ
      */
     suspend fun clearCard() {
-        _state.update { 
+        _state.update {
             it.copy(
                 isLoading = true,
                 statusMessage = "Đang xóa dữ liệu thẻ..."
             )
         }
-        
-        val result = withContext(Dispatchers.IO) { 
-            BusCardManager.clearCard() 
+
+        val result = withContext(Dispatchers.IO) {
+            BusCardManager.clearCard()
         }
-        
+
         result.onSuccess {
-            _state.update { 
+            _state.update {
                 it.copy(
                     statusMessage = "✓ Đã xóa dữ liệu thẻ",
                     isLoading = false
@@ -181,7 +183,7 @@ class LoadCardInfoViewModel(
             delay(500) // Delay ngắn để user thấy thông báo thành công
             onDismiss() // Đóng dialog
         }.onFailure { error ->
-            _state.update { 
+            _state.update {
                 it.copy(
                     isLoading = false,
                     statusMessage = "✗ ${error.message}"
@@ -189,75 +191,104 @@ class LoadCardInfoViewModel(
             }
         }
     }
-    
+
     /**
      * Cập nhật các trường input
      */
     fun updateCardId(value: String) {
         _state.update { it.copy(cardId = value) }
     }
-    
+
     fun updateFullName(value: String) {
         _state.update { it.copy(fullName = value) }
     }
-    
+
     fun updateCccd(value: String) {
         _state.update { it.copy(cccd = value) }
     }
-    
+
     fun updateDob(value: String) {
         _state.update { it.copy(dob = TextFieldValue(value)) }
     }
-    
+
     fun updateAddress(value: String) {
         _state.update { it.copy(address = value) }
     }
-    
+
     fun updatePhone(value: String) {
         _state.update { it.copy(phone = value) }
     }
-    
+
     fun updateCardType(value: CardType) {
         _state.update { it.copy(cardType = value) }
     }
-    
+
     fun updateExpiryDate(value: LocalDate) {
         _state.update { it.copy(expiryDate = value) }
     }
-    
+
     fun updateBalance(value: String) {
         _state.update { it.copy(balance = value) }
     }
-    
+
     fun updatePin(value: String) {
         _state.update { it.copy(pin = value) }
     }
-    
-    fun updateLinkedCustomerCode(value: String) {
-        _state.update { it.copy(linkedCustomerCode = value) }
-    }
-    
+
     fun updatePhoto(value: ByteArray?) {
         _state.update { it.copy(photoBytes = value) }
     }
-    
+
+    /**
+     * Xử lý file ảnh đã chọn từ Desktop
+     * Đọc file, chuyển đổi sang BufferedImage rồi sang ByteArray bằng HelpMethod
+     */
+    fun processImageFile(file: File) {
+        try {
+            val image = ImageIO.read(file)
+            if (image == null) {
+                _state.update {
+                    it.copy(statusMessage = "✗ Không thể đọc file ảnh")
+                }
+                return
+            }
+
+            // Chuyển đổi sang ByteArray bằng HelpMethod
+            val bytes = HelpMethod.convertImageToByteArray(image)
+
+            println("Anh da chuyen doi: ${bytes.size} bytes (${image.width}x${image.height})")
+
+            _state.update {
+                it.copy(
+                    photoBytes = bytes,
+                    statusMessage = "✓ Đã chọn ảnh (${bytes.size} bytes)"
+                )
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            _state.update {
+                it.copy(statusMessage = "✗ Lỗi xử lý ảnh: ${e.message}")
+            }
+        }
+    }
+
     /**
      * Sử dụng dữ liệu khách hàng hiện có
      */
     fun setUseExistingData(use: Boolean) {
-        _state.update { 
+        _state.update {
             it.copy(
                 useExistingData = use,
                 selectedExistingCustomer = if (!use) null else it.selectedExistingCustomer
             )
         }
     }
-    
+
     /**
      * Chọn khách hàng hiện có và điền dữ liệu
      */
     fun selectExistingCustomer(customer: Customer) {
-        _state.update { 
+        _state.update {
             it.copy(
                 selectedExistingCustomer = customer,
                 cardId = customer.cardId,
@@ -269,40 +300,41 @@ class LoadCardInfoViewModel(
                 cardType = customer.cardType,
                 expiryDate = customer.expiryDate,
                 balance = customer.balance.toInt().toString(),
-                linkedCustomerCode = customer.linkedCustomerCode,
                 photoBytes = customer.photoBytes
             )
         }
     }
-    
+
     /**
      * Validate input và chuyển sang bước tiếp theo
      */
     fun validateAndNext() {
         val state = _state.value
-        
+
         when {
             state.isPhotoTooLarge -> {
-                _state.update { 
-                    it.copy(statusMessage = "⚠ Ảnh vượt quá 32KB. Vui lòng chọn ảnh nhỏ hơn") 
+                _state.update {
+                    it.copy(statusMessage = "⚠ Ảnh vượt quá 32KB. Vui lòng chọn ảnh nhỏ hơn")
                 }
             }
+
             validateInput(state) -> {
-                _state.update { 
+                _state.update {
                     it.copy(
                         currentStep = LoadStep.WRITE_DATA,
                         statusMessage = "Sẵn sàng ghi dữ liệu lên thẻ"
                     )
                 }
             }
+
             else -> {
-                _state.update { 
-                    it.copy(statusMessage = "⚠ Vui lòng điền đầy đủ thông tin bắt buộc") 
+                _state.update {
+                    it.copy(statusMessage = "⚠ Vui lòng điền đầy đủ thông tin bắt buộc")
                 }
             }
         }
     }
-    
+
     /**
      * Validate input
      */
@@ -310,13 +342,13 @@ class LoadCardInfoViewModel(
         val cccd = state.cccd
         val phone = state.phone
         val dob = state.dob.text
-        
+
         // Validate CCCD: đúng 12 chữ số
         val isValidCccd = cccd.length == 12 && cccd.all { it.isDigit() }
-        
+
         // Validate SĐT: đúng 10 chữ số
         val isValidPhone = phone.length == 10 && phone.all { it.isDigit() }
-        
+
         // Validate DOB: định dạng dd/MM/yyyy và < ngày hiện tại
         var isValidDob = false
         try {
@@ -328,38 +360,36 @@ class LoadCardInfoViewModel(
         } catch (e: Exception) {
             isValidDob = false
         }
-        
-        return state.cardId.isNotBlank() && 
-               state.fullName.isNotBlank() && 
-               isValidCccd && 
-               isValidDob && 
-               isValidPhone && 
-               state.pin.length in 4..6
+
+        return state.cardId.isNotBlank() &&
+                state.fullName.isNotBlank() &&
+                isValidCccd &&
+                isValidDob &&
+                isValidPhone &&
+                state.pin.length in 4..6
     }
-    
+
     /**
      * Ghi dữ liệu lên thẻ
      */
     suspend fun writeDataToCard() {
         val state = _state.value
-        
-        _state.update { 
+
+        _state.update {
             it.copy(
                 isLoading = true,
                 statusMessage = "Đang ghi dữ liệu lên thẻ..."
             )
         }
-        
+
         val writeSuccess = withContext(Dispatchers.IO) {
             writeDataToCardInternal(
                 cardId = state.cardId,
                 fullName = state.fullName,
-                customerType = state.customerType,
                 cardType = state.cardType,
                 expiryDate = state.expiryDate,
                 balance = state.balance.toDoubleOrNull() ?: 0.0,
                 pin = state.pin,
-                linkedCustomerCode = state.linkedCustomerCode,
                 cccd = state.cccd,
                 dob = state.dob.text,
                 address = state.address,
@@ -367,7 +397,7 @@ class LoadCardInfoViewModel(
                 photoBytes = state.photoBytes
             )
         }
-        
+
         if (writeSuccess) {
             val newCustomer = Customer(
                 id = state.cardId,
@@ -377,30 +407,28 @@ class LoadCardInfoViewModel(
                 dob = state.dob.text,
                 address = state.address,
                 phone = state.phone,
-                customerType = state.customerType,
                 cardType = state.cardType,
                 expiryDate = state.expiryDate,
                 balance = state.balance.toDoubleOrNull() ?: 0.0,
-                linkedCustomerCode = state.linkedCustomerCode,
                 photoBytes = state.photoBytes
             )
-            
-            _state.update { 
+
+            _state.update {
                 it.copy(statusMessage = "💾 Đang lưu vào database...")
             }
-            
+
             val existing = withContext(Dispatchers.IO) {
                 DatabaseManager.getCustomerByCardId(state.cardId)
             }
-            
+
             val insertSuccess = if (existing == null) {
                 withContext(Dispatchers.IO) {
-                    DatabaseManager.insertCustomer(newCustomer, state.pin)
+                    DatabaseManager.insertCustomer(newCustomer)
                 }
             } else {
                 false
             }
-            
+
             if (insertSuccess) {
                 withContext(Dispatchers.IO) {
                     DatabaseManager.insertTransaction(
@@ -412,24 +440,24 @@ class LoadCardInfoViewModel(
                         description = "Nạp tiền ban đầu khi khởi tạo thẻ"
                     )
                 }
-                _state.update { 
+                _state.update {
                     it.copy(statusMessage = "✅ Ghi dữ liệu và lưu database thành công!")
                 }
             } else if (existing != null) {
-                _state.update { 
+                _state.update {
                     it.copy(statusMessage = "✅ Ghi thẻ thành công! (Card ID đã có trong database)")
                 }
             } else {
-                _state.update { 
+                _state.update {
                     it.copy(statusMessage = "⚠️ Ghi thẻ thành công nhưng lỗi lưu database")
                 }
             }
-            
+
             _state.update { it.copy(isLoading = false) }
             onSuccess(newCustomer)
             onDismiss()
         } else {
-            _state.update { 
+            _state.update {
                 it.copy(
                     isLoading = false,
                     statusMessage = "✗ Ghi dữ liệu thất bại"
@@ -437,19 +465,17 @@ class LoadCardInfoViewModel(
             }
         }
     }
-    
+
     /**
      * Ghi dữ liệu lên thẻ (internal)
      */
-    private suspend fun writeDataToCardInternal(
+    private fun writeDataToCardInternal(
         cardId: String,
         fullName: String,
-        customerType: CustomerType,
         cardType: CardType,
         expiryDate: LocalDate,
         balance: Double,
         pin: String,
-        linkedCustomerCode: String,
         cccd: String = "",
         dob: String = "",
         address: String = "",
@@ -462,10 +488,10 @@ class LoadCardInfoViewModel(
 
             val infoResult = BusCardManager.updateCustomerInfo(
                 fullName = fullName,
-                customerType = customerType.displayName,
+                customerType = "Khách hàng",
                 expiryDate = expiryString,
                 cardType = cardType.displayName,
-                linkedCustomerId = linkedCustomerCode,
+                linkedCustomerId = "",
                 cccd = cccd,
                 dob = dob,
                 address = address,
@@ -497,7 +523,7 @@ class LoadCardInfoViewModel(
             false
         }
     }
-    
+
     /**
      * Cleanup
      */

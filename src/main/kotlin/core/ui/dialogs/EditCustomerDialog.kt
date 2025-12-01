@@ -20,7 +20,6 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import core.model.CardType
 import core.model.Customer
-import core.model.CustomerType
 import core.ui.components.formatDateOfBirth
 
 /**
@@ -37,7 +36,6 @@ fun EditCustomerDialog(
     var dob by remember { mutableStateOf(TextFieldValue(customer.dob, TextRange(customer.dob.length))) }
     var address by remember { mutableStateOf(customer.address) }
     var phone by remember { mutableStateOf(customer.phone) }
-    val customerType = CustomerType.CUSTOMER
     var cardType by remember { mutableStateOf(customer.cardType) }
     var expiryDate by remember { mutableStateOf(customer.expiryDate) }
     var balance by remember { mutableStateOf(customer.balance.toInt().toString()) }
@@ -99,14 +97,6 @@ fun EditCustomerDialog(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Customer type (fixed)
-                OutlinedTextField(
-                    value = customerType.displayName,
-                    onValueChange = {},
-                    readOnly = true,
-                    label = { Text("Loại đối tượng") },
-                    modifier = Modifier.fillMaxWidth()
-                )
 
                 Spacer(modifier = Modifier.height(16.dp))
 
@@ -250,7 +240,6 @@ fun EditCustomerDialog(
                                 dob = dob.text,
                                 address = address,
                                 phone = phone,
-                                customerType = customerType,
                                 cardType = cardType,
                                 expiryDate = expiryDate,
                                 balance = balance.toDoubleOrNull() ?: customer.balance

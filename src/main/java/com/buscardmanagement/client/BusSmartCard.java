@@ -477,11 +477,6 @@ public class BusSmartCard {
     }
     public boolean updatePicture(byte[] pictureBytes) {
         try {
-            if (pictureBytes == null || pictureBytes.length == 0) {
-                System.err.println("Anh rong, khong co gi de ghi len the");
-                return false;
-            }
-            
             if (!"T=1".equals(protocol)) {
                 System.err.println("LOI: He thong chi ho tro T=1 protocol");
                 return false;
@@ -527,30 +522,6 @@ public class BusSmartCard {
     }
 
     /**
-     * Ghi ảnh khách hàng vào thẻ từ BufferedImage
-     * @param image Ảnh BufferedImage cần ghi
-     * @return true nếu thành công, false nếu thất bại
-     */
-    public boolean updatePatientPicture(BufferedImage image) {
-        try {
-            byte[] pictureBytes = HelpMethod.convertImageToByteArray(image);
-            if (pictureBytes == null) {
-                System.err.println("Khong the chuyen doi anh sang byte array");
-                return false;
-            }
-            
-            System.out.print("Command APDU (hex): ");
-            System.out.println("Ghi " + pictureBytes.length + " bytes len the");
-            
-            return updatePicture(pictureBytes);
-        } catch (Exception e) {
-            System.err.println("Loi ghi anh: " + e.getMessage());
-            e.printStackTrace();
-            return false;
-        }
-    }
-
-    /**
      * Đọc ảnh khách hàng từ thẻ
      * Trả về byte array của ảnh, hoặc null nếu lỗi
      */
@@ -561,13 +532,13 @@ public class BusSmartCard {
                 return null;
             }
 
-            // Đọc ảnh theo CHUNK, phù hợp với applet mới (P1|P2 = offset)
+            //  Đọc ảnh theo CHUNK, phù hợp với applet mới (P1|P2 = offset)
             java.util.List<byte[]> chunks = new java.util.ArrayList<>();
 
             int offset = 0;
             int totalRead = 0;
             final int MAX_TOTAL = 32767;   // đồng bộ với MAX_PICTURE_LEN của applet
-            final int MAX_CHUNKS = 512;    // giới hạn an toàn để tránh vòng lặp vô hạn
+            final int MAX_CHUNKS = 240;    // giới hạn an toàn để tránh vòng lặp vô hạn
 
             System.out.println("[BusSmartCard] Bat dau doc anh theo chunk...");
 
@@ -600,22 +571,12 @@ public class BusSmartCard {
 
             System.out.println("[BusSmartCard] Tong so chunks: " + chunks.size() +
                     ", tong kich thuoc: " + totalRead + " bytes");
-
+            // Gom các chunk lại
             byte[] pictureBytes = new byte[totalRead];
             int pos = 0;
             for (byte[] chunk : chunks) {
                 System.arraycopy(chunk, 0, pictureBytes, pos, chunk.length);
                 pos += chunk.length;
-            }
-
-            if (pictureBytes.length >= 2 &&
-                    pictureBytes[0] == (byte) 0xFF &&
-                    pictureBytes[1] == (byte) 0xD8) {
-                System.out.println("[BusSmartCard] ✓ Doc anh thanh cong, kich thuoc: " +
-                        pictureBytes.length + " bytes (JPEG)");
-            } else {
-                System.out.println("[BusSmartCard] ✓ Doc anh thanh cong, kich thuoc: " +
-                        pictureBytes.length + " bytes (khong phai JPEG header)");
             }
 
             return pictureBytes;

@@ -8,7 +8,7 @@ object AppConstants {
 
     // Timing
     const val INITIAL_LOAD_DELAY_MS = 500L
-    const val STATS_RELOAD_INTERVAL_MS = 10000L
+    const val STATS_RELOAD_INTERVAL_MS = 2000L
     
 
     // Transaction types
@@ -16,6 +16,8 @@ object AppConstants {
     const val TRANSACTION_TYPE_TAP = "TAP"
     const val TRANSACTION_TYPE_EXTEND_MONTHLY = "EXTEND_MONTHLY"
 }
+
+
 
 
 

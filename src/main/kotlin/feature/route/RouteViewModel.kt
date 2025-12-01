@@ -76,23 +76,9 @@ class RouteViewModel {
         if (state.startPoint.isEmpty() || state.endPoint.isEmpty()) {
             return ""
         }
-        val origin = state.startPoint.replace(" ", "+")
-        val destination = state.endPoint.replace(" ", "+")
-        return "https://www.google.com/maps/dir/$origin+Hanoi+Vietnam/$destination+Hanoi+Vietnam"
-    }
-    
-    /**
-     * Cập nhật status message
-     */
-    fun updateStatusMessage(message: String) {
-        _state.update { it.copy(statusMessage = message) }
-    }
-    
-    /**
-     * Clear status message
-     */
-    fun clearStatusMessage() {
-        _state.update { it.copy(statusMessage = "") }
+        val startPoint = state.startPoint.replace(" ", "+")
+        val endPoint = state.endPoint.replace(" ", "+")
+        return "https://www.google.com/maps/dir/$startPoint+Hanoi+Vietnam/$endPoint+Hanoi+Vietnam"
     }
     
     /**

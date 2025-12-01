@@ -402,12 +402,6 @@ private fun InformationTab(
                             fontSize = 18.sp,
                             fontWeight = FontWeight.Bold
                         )
-                        Spacer(Modifier.height(4.dp))
-                        Text(
-                            text = customer.customerType.displayName,
-                            fontSize = 14.sp,
-                            color = Color(0xFF2196F3)
-                        )
                     }
                 }
             }
@@ -436,14 +430,10 @@ private fun InformationTab(
                     if (customer.phone.isNotEmpty()) {
                         InfoRow("Số điện thoại", customer.phone)
                     }
-                    InfoRow("Loại đối tượng", customer.customerType.displayName)
                     InfoRow(
                         "Ngày hết hạn", 
                         customer.expiryDate.format(DateTimeFormatter.ofPattern("dd/MM/yyyy"))
                     )
-                    if (customer.linkedCustomerCode.isNotEmpty()) {
-                        InfoRow("Mã liên kết", customer.linkedCustomerCode)
-                    }
                     Divider()
                     InfoRow(
                         "Số dư", 

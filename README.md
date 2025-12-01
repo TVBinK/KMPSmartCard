@@ -38,9 +38,7 @@ Nền tảng quản lý vé xe buýt thông minh kết hợp **Java Card Applet*
 
 ---
 
-## Các hàm chính
-### Connect()
-
+## Logic chính
 ```
 Khi user bấm click Kết nối Java Card -> gọi onConnect(trong ConnectStep) -> loadCardInfoViewModel.connect() 
                               -> BusCardManager.connect() -> connectCard (BusSmartCard.java)
@@ -50,7 +48,8 @@ Khi user bấm đọc thẻ -> gọi readSmartCardViewModel.onDialogOpened (tron
 Buffer APDU là bộ nhớ tạm (RAM) để lưu dữ liệu tạm thời dưới dạng byte array
 ISO7816.OFFSET_CDATA là một hằng số định nghĩa vị trí (offset) trong buffer APDU
 Quy trình ghi ảnh:
-- Client gửi 1 APDU command duy nhất
+- Khi đọc ảnh từ storage desktop thì ảnh sẽ convert sang bytes bằng: LoadCardViewModel.processImageFile, hàm này sẽ duùng HelpMethod để conver ảnh sang bytes và update state
+- BusSmartCard.updatePicture sẽ gửi 1 APDU command duy nhất đến applet
 - Applet sẽ nhận APDU và Đọc dữ liệu theo chunk, Kiểm tra tính toàn vẹn xem dữ liệu bị đọc thiếu không,
   Mã hóa → ciphertext, cuối cùng lưu vào EPROM
 Quy trình đọc ảnh: 

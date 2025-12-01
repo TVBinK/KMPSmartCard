@@ -3,7 +3,6 @@ package feature.loadcard
 import androidx.compose.ui.text.input.TextFieldValue
 import core.model.CardType
 import core.model.Customer
-import core.model.CustomerType
 import java.time.LocalDate
 
 /**
@@ -35,12 +34,10 @@ data class LoadCardInfoState(
     val dob: TextFieldValue = TextFieldValue(""),
     val address: String = "",
     val phone: String = "",
-    val customerType: CustomerType = CustomerType.CUSTOMER,
     val cardType: CardType = CardType.NORMAL,
     val expiryDate: LocalDate = LocalDate.now().plusMonths(1),
     val balance: String = "100000",
     val pin: String = "",
-    val linkedCustomerCode: String = "",
     val photoBytes: ByteArray? = null
 ) {
     val isPhotoTooLarge: Boolean

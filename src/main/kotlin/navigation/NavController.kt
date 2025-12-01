@@ -61,6 +61,5 @@ sealed class Screen(val route: String, val title: String) {
     data class CustomerCardInfo(val customer: Customer) : Screen("customer_card_info", "Thông tin thẻ")
     data class EditCustomer(val customer: Customer) : Screen("edit_customer", "Sửa thông tin khách hàng")
     data class DeleteConfirm(val customer: Customer) : Screen("delete_confirm", "Xác nhận xóa")
-    data class TicketValidation(val customer: Customer) : Screen("ticket_validation", "Xác thực vé")
 }
 

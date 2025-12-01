@@ -199,17 +199,6 @@ fun PinVerificationDialog(
                         }
                     }
                     
-                    // Hiển thị số lần còn lại
-                    if (state.attemptsRemaining < maxAttempts) {
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = "Còn ${state.attemptsRemaining} lần thử",
-                            fontSize = 12.sp,
-                            color = if (state.attemptsRemaining <= 1) Color(0xFFF44336) else Color(0xFFFF9800),
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                    
                     Spacer(modifier = Modifier.height(16.dp))
                     
                     // Buttons

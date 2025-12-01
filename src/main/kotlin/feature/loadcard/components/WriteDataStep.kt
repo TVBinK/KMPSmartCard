@@ -13,7 +13,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import core.model.CardType
-import core.model.CustomerType
 
 @Composable
 fun WriteDataStepContent(
@@ -23,7 +22,6 @@ fun WriteDataStepContent(
     dob: String,
     address: String,
     phone: String,
-    customerType: CustomerType,
     cardType: CardType,
     balance: String,
     photoSizeBytes: Int,
@@ -64,7 +62,6 @@ fun WriteDataStepContent(
                 InfoRow("Địa chỉ", address)
                 InfoRow("Số điện thoại", phone)
                 Divider()
-                InfoRow("Loại đối tượng", customerType.displayName)
                 InfoRow("Loại thẻ", cardType.displayName)
                 InfoRow("Số dư", String.format("%,d VNĐ", balance.toLongOrNull() ?: 0))
             }
