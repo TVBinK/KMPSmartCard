@@ -354,9 +354,12 @@ class PaymentViewModel(
     /**
      * Xử lý gia hạn sau khi verify PIN
      */
-    fun processExtension(onSuccess: (ExtensionRequest) -> Unit) {
+    fun processExtension(pin: String, onSuccess: (ExtensionRequest) -> Unit) {
         val extensionState = _state.value.extensionState
         val request = extensionState.pendingRequest ?: return
+        
+        // Thêm PIN vào request
+        val requestWithPin = request.copy(pin = pin)
         
         // Mã hóa giao dịch bằng RSA
         viewModelScope.launch(Dispatchers.IO) {
@@ -388,7 +391,7 @@ class PaymentViewModel(
         }
         
         // Callback để update parent
-        onSuccess(request)
+        onSuccess(requestWithPin)
         
         // Reset state
         _state.update { current ->

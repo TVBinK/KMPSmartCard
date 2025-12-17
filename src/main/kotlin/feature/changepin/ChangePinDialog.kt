@@ -22,10 +22,18 @@ import kotlinx.coroutines.launch
 @Composable
 fun ChangePinDialog(
     onDismiss: () -> Unit,
-    onSuccess: () -> Unit
+    onSuccess: (String) -> Unit
 ) {
+    // Lưu PIN mới để gọi callback khi nhấn nút "Đóng"
+    var savedNewPin by remember { mutableStateOf("") }
+    
     // Khởi tạo ViewModel
-    val changePinViewModel = remember { ChangePinViewModel(onSuccess) }
+    val changePinViewModel = remember { 
+        ChangePinViewModel { newPin -> 
+            savedNewPin = newPin
+            onSuccess(newPin) 
+        } 
+    }
     val state by changePinViewModel.state.collectAsState()
     val coroutineScope = rememberCoroutineScope()
     
@@ -120,7 +128,8 @@ fun ChangePinDialog(
                     
                     Button(
                         onClick = {
-                            onSuccess()
+                            // onSuccess đã được gọi trong ViewModel với PIN mới
+                            // Chỉ cần đóng dialog
                             onDismiss()
                         },
                         modifier = Modifier

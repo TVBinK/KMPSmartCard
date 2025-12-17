@@ -208,6 +208,9 @@ class MainViewModel {
                 }
             }
             if (BusCardManager.isConnected) {
+                // Sử dụng PIN từ request nếu có, nếu không thì để null (sẽ báo lỗi rõ ràng)
+                val pin = request.pin
+                
                 val infoResult = BusCardManager.updateCustomerInfo(
                     fullName = customer.fullName,
                     customerType = "Khách hàng",
@@ -217,12 +220,13 @@ class MainViewModel {
                     cccd = customer.cccd,
                     dob = customer.dob,
                     address = customer.address,
-                    phone = customer.phone
+                    phone = customer.phone,
+                    pin = pin
                 )
                 if (infoResult.isFailure) {
                     println("Khong the cap nhat thong tin gia han len the: ${infoResult.exceptionOrNull()?.message}")
                 }
-                val balanceResult = BusCardManager.updateBalance(balanceAfter)
+                val balanceResult = BusCardManager.updateBalance(balanceAfter, pin)
                 if (balanceResult.isFailure) {
                     println("Khong the cap nhat so du sau gia han tren the: ${balanceResult.exceptionOrNull()?.message}")
                 }

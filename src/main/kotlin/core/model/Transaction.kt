@@ -7,7 +7,8 @@ data class ExtensionRequest(
     val cardId: String,
     val extensionType: ExtensionType,
     val quantity: Int,  // Số tháng hoặc số lượt
-    val amount: Double
+    val amount: Double,
+    val pin: String? = null  // PIN đã được verify (tùy chọn)
 )
 
 /**

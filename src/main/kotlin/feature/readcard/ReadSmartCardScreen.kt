@@ -196,8 +196,9 @@ fun ReadSmartCardDialog(
         if (state.showChangePinDialog) {
             ChangePinDialog(
                 onDismiss = { readSmartCardViewModel.dismissChangePinDialog() },
-                onSuccess = {
-                    println("PIN da doi thanh cong")
+                onSuccess = { newPin ->
+                    println("PIN da doi thanh cong, dang ghi lai du lieu len the...")
+                    readSmartCardViewModel.rewriteDataAfterPinChange(newPin)
                     readSmartCardViewModel.dismissChangePinDialog()
                 }
             )

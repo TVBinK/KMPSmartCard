@@ -1,7 +1,9 @@
 package smartcard
 
 import com.buscardmanagement.client.BusSmartCard
-import java.awt.image.BufferedImage
+import core.database.DatabaseManager
+import security.SecurityUtils
+import java.security.SecureRandom
 
 /**
  * BusCardManager - Kotlin wrapper cho BusSmartCard Java client
@@ -79,6 +81,7 @@ object BusCardManager {
 
     /**
      * Cập nhật thông tin khách hàng lên thẻ
+     * @param pin PIN để xác thực trước khi cập nhật (tùy chọn, nếu null sẽ không verify PIN)
      */
     fun updateCustomerInfo(
         fullName: String,
@@ -89,13 +92,25 @@ object BusCardManager {
         cccd: String = "",
         dob: String = "",
         address: String = "",
-        phone: String = ""
+        phone: String = "",
+        pin: String? = null
     ): Result<Boolean> = executeSafe("Cập nhật thông tin khách hàng") {
         val result = smartCard.updateCustomerInfo(
             fullName, customerType, expiryDate, cardType, linkedCustomerId,
-            cccd, dob, address, phone
+            cccd, dob, address, phone, pin
         )
-        if (result) Result.success(true) else Result.failure(Exception("Không thể cập nhật thông tin khách hàng"))
+        if (result) {
+            Result.success(true)
+        } else {
+            // Kiểm tra xem có phải lỗi SW 6983 không
+            val errorMsg = if (pin == null || pin.isEmpty()) {
+                "Không thể cập nhật thông tin khách hàng. " +
+                "Có thể cần xác thực PIN trước khi cập nhật (SW: 6983 - Security status not satisfied)"
+            } else {
+                "Không thể cập nhật thông tin khách hàng. PIN có thể không đúng hoặc thẻ đã bị khóa"
+            }
+            Result.failure(Exception(errorMsg))
+        }
     }
 
     // ========== CARD ID ==========
@@ -167,7 +182,9 @@ object BusCardManager {
                         "PIN hiện tại không đúng"
                     }
                 } else {
-                    "Không thể tạo PIN"
+                    "Không thể tạo PIN. " +
+                    "Nếu đây là lần đầu tạo PIN, vui lòng xóa dữ liệu thẻ (clear card) trước khi tạo PIN mới. " +
+                    "SW: 6A88 có nghĩa là thẻ chưa được khởi tạo đúng cách."
                 }
                 Result.failure(Exception(errorMsg))
             }
@@ -179,6 +196,22 @@ object BusCardManager {
      */
     fun checkPin(pin: String): Result<Boolean> {
         return try {
+            // 1. Đọc Card ID từ thẻ
+            val cardIdResult = getCardId()
+            if (cardIdResult.isFailure) {
+                return Result.failure(Exception("Không thể đọc Card ID trước khi xác thực RSA"))
+            }
+            val cardId = cardIdResult.getOrNull() ?: return Result.failure(
+                Exception("Card ID rỗng, không thể thực hiện xác thực RSA")
+            )
+
+            // 2. Thực hiện RSA Challenge-Response để xác thực THẺ
+            val rsaResult = challengeCard(cardId)
+            if (rsaResult.isFailure || rsaResult.getOrNull() != true) {
+                return Result.failure(Exception("Thẻ bị từ chối do xác thực RSA không thành công"))
+            }
+
+            // 3. Sau khi thẻ hợp lệ -> mới verify PIN (xác thực NGƯỜI DÙNG)
             val result = smartCard.checkPin(pin)
             if (result) {
                 Result.success(true)
@@ -211,12 +244,21 @@ object BusCardManager {
 
     /**
      * Cập nhật số dư
+     * @param pin PIN để xác thực trước khi cập nhật (tùy chọn, nếu null sẽ không verify PIN)
      */
-    fun updateBalance(balance: Double): Result<Boolean> = executeSafe("Cập nhật số dư") {
-        if (smartCard.updateBalance(balance.toString())) {
+    fun updateBalance(balance: Double, pin: String? = null): Result<Boolean> = executeSafe("Cập nhật số dư") {
+        val result = smartCard.updateBalance(balance.toString(), pin)
+        if (result) {
             Result.success(true)
         } else {
-            Result.failure(Exception("Không thể cập nhật số dư"))
+            // Kiểm tra xem có phải lỗi SW 6983 không
+            val errorMsg = if (pin == null || pin.isEmpty()) {
+                "Không thể cập nhật số dư. " +
+                "Có thể cần xác thực PIN trước khi cập nhật (SW: 6983 - Security status not satisfied)"
+            } else {
+                "Không thể cập nhật số dư. PIN có thể không đúng hoặc thẻ đã bị khóa"
+            }
+            Result.failure(Exception(errorMsg))
         }
     }
 
@@ -313,6 +355,62 @@ object BusCardManager {
         } catch (e: Exception) {
             Result.failure(Exception("Lỗi đọc public key: ${e.message}", e))
         }
+    }
+
+    /**
+     * Thực hiện RSA Challenge-Response để xác thực THẺ
+     *
+     * Bước 1: Lấy public key từ DB theo cardId
+     * Bước 2: Tạo challenge ngẫu nhiên (chuỗi 6 chữ số)
+     * Bước 3: Gửi challenge xuống thẻ để thẻ ký (INS_GET_SIGN)
+     * Bước 4: Verify chữ ký bằng public key trong DB
+     */
+    fun challengeCard(cardId: String): Result<Boolean> {
+        return executeSafe("Xác thực thẻ bằng RSA") {
+            // Bước 1 – Lấy public key từ DB
+            val publicKeyBytes = DatabaseManager.getPublicKeyByCardId(cardId)
+            if (publicKeyBytes == null || publicKeyBytes.isEmpty()) {
+                return@executeSafe Result.failure(
+                    Exception("Không tìm thấy public key trong DB cho Card ID: $cardId")
+                )
+            }
+
+            // Bước 2 – Tạo challenge ngẫu nhiên (6 chữ số)
+            val challenge = generateNumericChallenge(6)
+            val challengeBytes = challenge.toByteArray(Charsets.UTF_8)
+
+            // Bước 3 – Gửi challenge cho thẻ để ký
+            val signatureBytes = smartCard.signChallenge(challengeBytes)
+            if (signatureBytes == null || signatureBytes.isEmpty()) {
+                return@executeSafe Result.failure(Exception("Không nhận được chữ ký RSA từ thẻ"))
+            }
+
+            // Bước 4 – Xác thực chữ ký RSA trên app (dùng public key trong DB)
+            return@executeSafe try {
+                val valid = SecurityUtils.verifyRsaSignature(publicKeyBytes, signatureBytes, challenge)
+                if (valid) {
+                    Result.success(true)
+                } else {
+                    Result.failure(Exception("Xác thực RSA thất bại – chữ ký không khớp"))
+                }
+            } catch (e: Exception) {
+                Result.failure(Exception("Lỗi khi verify chữ ký RSA: ${e.message}", e))
+            }
+        }
+    }
+
+    /**
+     * Tạo chuỗi challenge ngẫu nhiên gồm [length] chữ số (0-9)
+     */
+    private fun generateNumericChallenge(length: Int): String {
+        val digits = "0123456789"
+        val random = SecureRandom()
+        val builder = StringBuilder(length)
+        repeat(length) {
+            val idx = random.nextInt(digits.length)
+            builder.append(digits[idx])
+        }
+        return builder.toString()
     }
 
     // ========== QUẢN LÝ THẺ ==========

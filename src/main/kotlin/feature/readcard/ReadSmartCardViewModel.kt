@@ -258,6 +258,94 @@ class ReadSmartCardViewModel {
     }
     
     /**
+     * Ghi lại dữ liệu lên thẻ sau khi đổi PIN thành công
+     * Vì applet đã xóa dữ liệu khi đổi PIN, cần ghi lại từ customer hiện tại
+     */
+    fun rewriteDataAfterPinChange(newPin: String) {
+        val customer = _state.value.selectedCustomer ?: return
+        
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                println("[RewriteData] Bat dau ghi lai du lieu sau khi doi PIN...")
+                
+                // Verify PIN mới để set trạng thái validated
+                val verifyResult = BusCardManager.checkPin(newPin)
+                if (verifyResult.isFailure) {
+                    println("[RewriteData] Loi verify PIN moi: ${verifyResult.exceptionOrNull()?.message}")
+                    withContext(Dispatchers.Main) {
+                        _state.update { it.copy(actionMessage = "Lỗi verify PIN mới") }
+                    }
+                    return@launch
+                }
+                
+                // Ghi lại thông tin khách hàng
+                val formatter = DateTimeFormatter.ofPattern("dd/MM/yyyy")
+                val infoResult = BusCardManager.updateCustomerInfo(
+                    fullName = customer.fullName,
+                    customerType = "Khách hàng",
+                    expiryDate = customer.expiryDate.format(formatter),
+                    cardType = customer.cardType.displayName,
+                    linkedCustomerId = "",
+                    cccd = customer.cccd,
+                    dob = customer.dob,
+                    address = customer.address,
+                    phone = customer.phone,
+                    pin = newPin
+                )
+                
+                if (infoResult.isFailure) {
+                    println("[RewriteData] Loi ghi thong tin KH: ${infoResult.exceptionOrNull()?.message}")
+                } else {
+                    println("[RewriteData] Da ghi lai thong tin KH")
+                }
+                
+                // Ghi lại Card ID
+                val cardIdResult = BusCardManager.updateCardId(customer.cardId)
+                if (cardIdResult.isFailure) {
+                    println("[RewriteData] Loi ghi Card ID: ${cardIdResult.exceptionOrNull()?.message}")
+                } else {
+                    println("[RewriteData] Da ghi lai Card ID: ${customer.cardId}")
+                }
+                
+                // Ghi lại số dư
+                val balanceResult = BusCardManager.updateBalance(customer.balance, newPin)
+                if (balanceResult.isFailure) {
+                    println("[RewriteData] Loi ghi so du: ${balanceResult.exceptionOrNull()?.message}")
+                } else {
+                    println("[RewriteData] Da ghi lai so du: ${customer.balance}")
+                }
+                
+                // Ghi lại ảnh (nếu có)
+                if (customer.photoBytes != null && customer.photoBytes.isNotEmpty()) {
+                    val photoResult = BusCardManager.updatePhotoBytes(customer.photoBytes)
+                    if (photoResult.isFailure) {
+                        println("[RewriteData] Loi ghi anh: ${photoResult.exceptionOrNull()?.message}")
+                    } else {
+                        println("[RewriteData] Da ghi lai anh (${customer.photoBytes.size} bytes)")
+                    }
+                }
+                
+                println("[RewriteData] Hoan tat ghi lai du lieu sau khi doi PIN")
+                
+                withContext(Dispatchers.Main) {
+                    _state.update { it.copy(actionMessage = "✓ Đã đổi PIN và cập nhật dữ liệu thành công") }
+                }
+                
+                // Tự động đọc lại thẻ để refresh UI
+                delay(500)
+                readCard()
+                
+            } catch (e: Exception) {
+                println("[RewriteData] Loi: ${e.message}")
+                e.printStackTrace()
+                withContext(Dispatchers.Main) {
+                    _state.update { it.copy(actionMessage = "Lỗi ghi lại dữ liệu: ${e.message}") }
+                }
+            }
+        }
+    }
+    
+    /**
      * Mở khóa thẻ khi bị khóa do sai PIN
      */
     fun unlockCard() {

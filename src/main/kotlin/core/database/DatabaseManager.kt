@@ -39,7 +39,7 @@ object DatabaseManager {
     /**
      * Khởi tạo database và tạo các bảng nếu chưa có
      */
-    fun initialize() {
+    fun initialize() {  
         try {
             Class.forName(SQLITE_DRIVER)
             connection = DriverManager.getConnection(JDBC_URL)
@@ -87,6 +87,7 @@ object DatabaseManager {
             pin_code TEXT,
             picture_url TEXT,
             photo_bytes BLOB,
+            public_key TEXT,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT DEFAULT CURRENT_TIMESTAMP
         )
@@ -164,7 +165,7 @@ object DatabaseManager {
      * Migration: Thêm các cột mới vào bảng customer (backward compatible)
      */
     private fun migrateCustomerTable(statement: java.sql.Statement) {
-        val newColumns = listOf("cccd", "dob", "address", "phone")
+        val newColumns = listOf("cccd", "dob", "address", "phone", "public_key")
         addColumnsIfNotExist(statement, "customer", newColumns)
     }
     
@@ -207,8 +208,8 @@ object DatabaseManager {
     private fun performInsertCustomer(customer: Customer): Boolean {
         val sql = """
             INSERT INTO customer (card_id, full_name, cccd, dob, address, phone, card_type, balance, 
-                                 expiry_date, status, pin_code, photo_bytes)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                 expiry_date, status, pin_code, photo_bytes, public_key)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """.trimIndent()
         
         return try {
@@ -225,6 +226,7 @@ object DatabaseManager {
                 stmt.setString(10, DEFAULT_STATUS)
                 stmt.setString(11, MASKED_PIN)
                 setPhotoBytes(stmt, 12, customer.photoBytes)
+                stmt.setString(13, customer.publicKey)
                 
                 val rowsAffected = stmt.executeUpdate()
                 logInfo("Đã thêm khách hàng: ${customer.cardId} (rows: $rowsAffected)")
@@ -255,7 +257,7 @@ object DatabaseManager {
         val sql = """
             UPDATE customer 
             SET full_name = ?, cccd = ?, dob = ?, address = ?, phone = ?, card_type = ?, balance = ?,
-                expiry_date = ?, status = ?, photo_bytes = ?,
+                expiry_date = ?, status = ?, photo_bytes = ?, public_key = ?,
                 updated_at = CURRENT_TIMESTAMP
             WHERE card_id = ?
         """.trimIndent()
@@ -272,7 +274,8 @@ object DatabaseManager {
                 stmt.setString(8, customer.expiryDate.toString())
                 stmt.setString(9, DEFAULT_STATUS)
                 setPhotoBytes(stmt, 10, customer.photoBytes)
-                stmt.setString(11, customer.cardId)
+                stmt.setString(11, customer.publicKey)
+                stmt.setString(12, customer.cardId)
                 
                 val rowsAffected = stmt.executeUpdate()
                 logInfo("Đã cập nhật khách hàng: ${customer.cardId} (rows: $rowsAffected)")
@@ -304,6 +307,30 @@ object DatabaseManager {
         }
         
         return customers
+    }
+    
+    /**
+     * Lấy Card ID gần nhất (latest) theo thứ tự tạo bản ghi
+     * Dùng để sinh ID mới theo quy tắc: ddMMyy + 6 số tăng dần
+     */
+    fun getLatestCitizenId(): String? {
+        if (!ensureConnection()) return null
+        
+        val sql = "SELECT card_id FROM customer ORDER BY id DESC LIMIT 1"
+        return try {
+            connection?.prepareStatement(sql)?.use { stmt ->
+                stmt.executeQuery().use { rs ->
+                    if (rs.next()) {
+                        rs.getString("card_id")
+                    } else {
+                        null
+                    }
+                }
+            }
+        } catch (e: SQLException) {
+            logError("Lỗi lấy latest card_id", e)
+            null
+        }
     }
     
     /**
@@ -455,6 +482,7 @@ object DatabaseManager {
         val dob = getStringSafely(rs, "dob")
         val address = getStringSafely(rs, "address")
         val phone = getStringSafely(rs, "phone")
+        val publicKey = getStringSafely(rs, "public_key")
         
         val cardTypeValue = getCardTypeSafely(rs)
         
@@ -470,7 +498,8 @@ object DatabaseManager {
             balance = rs.getDouble("balance"),
             expiryDate = LocalDate.parse(rs.getString("expiry_date"), dateFormatter),
             photoPath = rs.getString("picture_url") ?: "",
-            photoBytes = photoBytes
+            photoBytes = photoBytes,
+            publicKey = publicKey
         )
     }
     
@@ -488,6 +517,60 @@ object DatabaseManager {
         } catch (e: SQLException) {
             ""
         }
+    }
+    
+    /**
+     * Lấy public key (RSA) theo Card ID từ bảng customer
+     * - public_key được lưu dạng HEX string (bytes thẻ trả về)
+     * - Hàm này convert HEX -> ByteArray (raw format từ thẻ)
+     */
+    fun getPublicKeyByCardId(cardId: String): ByteArray? {
+        if (!ensureConnection()) return null
+        
+        val sql = "SELECT public_key FROM customer WHERE card_id = ?"
+        return try {
+            connection?.prepareStatement(sql)?.use { stmt ->
+                stmt.setString(1, cardId)
+                stmt.executeQuery().use { rs ->
+                    return if (rs.next()) {
+                        val publicKeyHex = getStringSafely(rs, "public_key")
+                        if (publicKeyHex.isBlank()) {
+                            null
+                        } else {
+                            try {
+                                hexStringToByteArray(publicKeyHex)
+                            } catch (e: IllegalArgumentException) {
+                                logError("Public key không phải HEX hợp lệ cho card_id=$cardId", e)
+                                null
+                            }
+                        }
+                    } else {
+                        null
+                    }
+                }
+            }
+        } catch (e: SQLException) {
+            logError("Lỗi lấy public key cho card_id=$cardId", e)
+            null
+        }
+    }
+    
+    /**
+     * Chuyển chuỗi HEX (không phân biệt hoa/thường, cho phép khoảng trắng) sang ByteArray
+     */
+    private fun hexStringToByteArray(hex: String): ByteArray {
+        val cleanHex = hex.replace(" ", "").trim()
+        require(cleanHex.length % 2 == 0) { "Độ dài HEX phải chẵn" }
+        
+        val result = ByteArray(cleanHex.length / 2)
+        var i = 0
+        while (i < cleanHex.length) {
+            val byteStr = cleanHex.substring(i, i + 2)
+            val byteVal = byteStr.toInt(16)
+            result[i / 2] = byteVal.toByte()
+            i += 2
+        }
+        return result
     }
     
     private fun getCardTypeSafely(rs: ResultSet): CardType {

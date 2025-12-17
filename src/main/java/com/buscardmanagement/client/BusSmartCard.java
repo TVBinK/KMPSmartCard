@@ -19,9 +19,8 @@ import javax.smartcardio.TerminalFactory;
  */
 public class BusSmartCard {
 
-    public static final byte[] AID_APPLET = {
-        (byte) 0x11, (byte) 0x22, (byte) 0x33, (byte) 0x44, (byte) 0x55,
-        (byte) 0x00, (byte) 0x01
+    public static final byte[] APPLET_AID = { 
+        (byte)0x11, (byte)0x22, (byte)0x33, (byte)0x44, (byte)0x55, (byte)0x00 
     };
 
     private Card card;
@@ -98,7 +97,7 @@ public class BusSmartCard {
             }
 
             // SELECT applet bằng AID
-            response = channel.transmit(new CommandAPDU(0x00, (byte) 0xA4, 0x04, 0x00, AID_APPLET));
+            response = channel.transmit(new CommandAPDU(0x00, (byte) 0xA4, 0x04, 0x00, APPLET_AID));
             String statusWord = Integer.toHexString(response.getSW());
 
             if (statusWord.equals("9000")) {
@@ -189,10 +188,76 @@ public class BusSmartCard {
         }
     }
 
+    public boolean updateCustomerInfo(String fullData) {
+        try {
+            byte[] dataBytes = HelpMethod.ConvertStringToByteArr(fullData);
+
+            if ("T=0".equals(protocol) && dataBytes.length > 255) {
+                System.err.println("Loi: Du lieu qua dai cho T=0 protocol");
+                return false;
+            }
+
+            byte[] command;
+            if ("T=1".equals(protocol) && dataBytes.length > 255) {
+                command = new byte[7 + dataBytes.length];
+                command[0] = (byte) 0x00;
+                command[1] = (byte) 0x20;
+                command[2] = (byte) 0x00;
+                command[3] = (byte) 0x00;
+                command[4] = (byte) 0x00;
+                command[5] = (byte) ((dataBytes.length >> 8) & 0xFF);
+                command[6] = (byte) (dataBytes.length & 0xFF);
+                System.arraycopy(dataBytes, 0, command, 7, dataBytes.length);
+            } else {
+                command = new byte[5 + dataBytes.length];
+                command[0] = (byte) 0x00;
+                command[1] = (byte) 0x20;
+                command[2] = (byte) 0x00;
+                command[3] = (byte) 0x00;
+                command[4] = (byte) dataBytes.length;
+                System.arraycopy(dataBytes, 0, command, 5, dataBytes.length);
+            }
+
+            ResponseAPDU response = sendCommandAPDU(command);
+
+            if (response != null && response.getSW() == 0x9000) {
+                return true;
+            } else {
+                int sw = response != null ? response.getSW() : 0;
+                if (sw == 0x6983) {
+                    System.err.println("Khong the cap nhat thong tin khach hang, SW: 6983 (Security status not satisfied). " +
+                        "Vui long xac thuc PIN truoc khi cap nhat thong tin khach hang.");
+                } else {
+                    System.err.println("Khong the cap nhat thong tin khach hang, SW: " + 
+                        (response != null ? Integer.toHexString(response.getSW()) : "null"));
+                }
+                return false;
+            }
+        } catch (Exception e) {
+            System.err.println("Loi cap nhat thong tin khach hang: " + e.getMessage());
+            return false;
+        }
+    }
+
     public boolean updateCustomerInfo(String hoTen, String loaiDoiTuong, String ngayHetHan, 
                                       String loaiThe, String linkedCustomerId, 
                                       String cccd, String dob, String address, String phone) {
+        return updateCustomerInfo(hoTen, loaiDoiTuong, ngayHetHan, loaiThe, linkedCustomerId, 
+                                 cccd, dob, address, phone, null);
+    }
+
+    public boolean updateCustomerInfo(String hoTen, String loaiDoiTuong, String ngayHetHan, 
+                                      String loaiThe, String linkedCustomerId, 
+                                      String cccd, String dob, String address, String phone, String pin) {
         try {
+            // Nếu có PIN, verify PIN trước khi cập nhật
+            if (pin != null && !pin.isEmpty()) {
+                if (!checkPin(pin)) {
+                    System.err.println("PIN khong dung, khong the cap nhat thong tin khach hang");
+                    return false;
+                }
+            }
+
             String dataBuilder = hoTen + "." +
                                 loaiDoiTuong + "." +
                                 ngayHetHan + "." +
@@ -236,8 +301,14 @@ public class BusSmartCard {
             if (response != null && response.getSW() == 0x9000) {
                 return true;
             } else {
-                System.err.println("Khong the cap nhat thong tin khach hang, SW: " + 
-                    (response != null ? Integer.toHexString(response.getSW()) : "null"));
+                int sw = response != null ? response.getSW() : 0;
+                if (sw == 0x6983) {
+                    System.err.println("Khong the cap nhat thong tin khach hang, SW: 6983 (Security status not satisfied). " +
+                        "Vui long xac thuc PIN truoc khi cap nhat thong tin khach hang.");
+                } else {
+                    System.err.println("Khong the cap nhat thong tin khach hang, SW: " + 
+                        (response != null ? Integer.toHexString(response.getSW()) : "null"));
+                }
                 return false;
             }
         } catch (Exception e) {
@@ -334,6 +405,14 @@ public class BusSmartCard {
                 if (sw == 0x9000) {
                     // Kiểm tra response data để xem có bị khóa không
                     byte[] responseData = response.getData();
+                    // Khi tạo PIN lần đầu (oldPin rỗng), response có thể không có data
+                    if (oldPin.isEmpty()) {
+                        // Tạo PIN lần đầu thành công
+                        isCardBlocked = false;
+                        counter = 0;
+                        return true;
+                    }
+                    // Khi đổi PIN (oldPin không rỗng), kiểm tra response data
                     if (responseData != null && responseData.length > 0) {
                         byte firstByte = responseData[0];
                         if (firstByte == (byte) 0x00) {
@@ -353,11 +432,17 @@ public class BusSmartCard {
                             return false;
                         }
                     }
+                    // Nếu không có response data nhưng SW = 9000, coi như thành công
                     return true;
                 } else if (sw == 0x6983) {
                     // Thẻ bị khóa
                     isCardBlocked = true;
                     System.err.println("The da bi khoa do nhap sai PIN cu qua nhieu lan");
+                    return false;
+                } else if (sw == 0x6A88) {
+                    // Data object not found - Thẻ chưa được khởi tạo hoặc cần clear trước
+                    System.err.println("Khong the cap nhat PIN, SW: 6A88 (Data object not found). " +
+                        "Vui long xoa du lieu the (clear card) truoc khi tao PIN lan dau.");
                     return false;
                 } else {
                     System.err.println("Khong the cap nhat PIN, SW: " + Integer.toHexString(sw));
@@ -450,7 +535,19 @@ public class BusSmartCard {
     }
 
     public boolean updateBalance(String balance) {
+        return updateBalance(balance, null);
+    }
+
+    public boolean updateBalance(String balance, String pin) {
         try {
+            // Nếu có PIN, verify PIN trước khi cập nhật
+            if (pin != null && !pin.isEmpty()) {
+                if (!checkPin(pin)) {
+                    System.err.println("PIN khong dung, khong the cap nhat so du");
+                    return false;
+                }
+            }
+
             byte[] balanceBytes = HelpMethod.ConvertStringToByteArr(balance);
 
             byte[] command = new byte[5 + balanceBytes.length];
@@ -466,8 +563,14 @@ public class BusSmartCard {
             if (response != null && response.getSW() == 0x9000) {
                 return true;
             } else {
-                System.err.println("Khong the cap nhat so du, SW: " + 
-                    (response != null ? Integer.toHexString(response.getSW()) : "null"));
+                int sw = response != null ? response.getSW() : 0;
+                if (sw == 0x6983) {
+                    System.err.println("Khong the cap nhat so du, SW: 6983 (Security status not satisfied). " +
+                        "Vui long xac thuc PIN truoc khi cap nhat so du.");
+                } else {
+                    System.err.println("Khong the cap nhat so du, SW: " + 
+                        (response != null ? Integer.toHexString(response.getSW()) : "null"));
+                }
                 return false;
             }
         } catch (Exception e) {
@@ -561,6 +664,22 @@ public class BusSmartCard {
                         ", SW=0x" + String.format("%04X", sw) +
                         ", len=" + (data != null ? data.length : 0));
 
+                // Nếu SW không phải 0x9000 hoặc data rỗng, dừng lại
+                if (sw != 0x9000) {
+                    System.out.println("[BusSmartCard] GET_PICTURE dừng lại do SW khác 0x9000: 0x" + String.format("%04X", sw));
+                    break;
+                }
+                
+                // Nếu data rỗng và offset = 0, có nghĩa là thẻ chưa có ảnh
+                if (data == null || data.length == 0) {
+                    if (offset == 0) {
+                        System.out.println("[BusSmartCard] Thẻ chưa có ảnh (pictureLen = 0)");
+                        return null; // Trả về null để báo là chưa có ảnh
+                    }
+                    // Nếu offset > 0 và data rỗng, có nghĩa là đã đọc hết
+                    break;
+                }
+
                 chunks.add(data);
                 totalRead += data.length;
                 offset += data.length;
@@ -645,6 +764,42 @@ public class BusSmartCard {
             return null;
         }
     }
+    
+    /**
+     * Gửi challenge xuống thẻ để thẻ ký (RSA SHA1withRSA)
+     *
+     * @param challengeBytes dữ liệu challenge (ví dụ chuỗi 6 chữ số ở dạng bytes)
+     * @return chữ ký do thẻ trả về (byte[]), hoặc null nếu lỗi
+     */
+    public byte[] signChallenge(byte[] challengeBytes) {
+        if (challengeBytes == null || challengeBytes.length == 0) {
+            System.err.println("Challenge rong, khong the ky");
+            return null;
+        }
+        
+        try {
+            // INS_GET_SIGN = 0x25, P1 = 0x00, P2 = 0x00
+            byte[] command = new byte[5 + challengeBytes.length];
+            command[0] = (byte) 0x00;
+            command[1] = (byte) 0x25;
+            command[2] = (byte) 0x00;
+            command[3] = (byte) 0x00;
+            command[4] = (byte) challengeBytes.length;
+            System.arraycopy(challengeBytes, 0, command, 5, challengeBytes.length);
+
+            ResponseAPDU response = sendCommandAPDU(command);
+            if (response != null && response.getSW() == 0x9000) {
+                return response.getData();
+            } else {
+                System.err.println("Khong the lay chu ky RSA, SW: " +
+                        (response != null ? Integer.toHexString(response.getSW()) : "null"));
+                return null;
+            }
+        } catch (Exception e) {
+            System.err.println("Loi gui challenge RSA: " + e.getMessage());
+            return null;
+        }
+    }
 
     // ========== QUẢN LÝ THẺ ==========
 
@@ -690,4 +845,63 @@ public class BusSmartCard {
         }
     }
 
+    // ========== INIT CARD HELPER (FIX THỨ TỰ GỌI) ==========
+
+
+
+    /**
+     * Hàm khởi tạo thẻ trọn gói.
+     * Tự động thực hiện đúng thứ tự:
+     * 1. Set PIN (để sinh Key AES).
+     * 2. Nạp Info, Balance, ID, Picture (được mã hóa bởi Key vừa sinh).
+     */
+    public boolean initCard(String pin, String cardId, String customerInfo, String balance, byte[] pictureData) {
+        if (pin == null || pin.isEmpty()) {
+            System.err.println("Init: PIN khong duoc de trong");
+            return false;
+        }
+
+        // 1. QUAN TRỌNG: Cập nhật PIN trước tiên
+        // Với thẻ mới, oldPin là chuỗi rỗng
+        System.out.println("Init: Dang thiet lap PIN...");
+        if (!updatePin("", pin)) {
+            System.err.println("Init: Loi thiet lap PIN. Huy qua trinh.");
+            return false;
+        }
+
+        // 2. Sau khi có PIN -> Có Key -> Nạp các thông tin khác
+        System.out.println("Init: Dang nap thong tin...");
+        
+        if (cardId != null && !cardId.isEmpty()) {
+            if (!updateCardId(cardId)) {
+                System.err.println("Init: Loi nap Card ID");
+                return false;
+            }
+        }
+
+        if (customerInfo != null && !customerInfo.isEmpty()) {
+            if (!updateCustomerInfo(customerInfo)) {
+                System.err.println("Init: Loi nap Thong tin khach hang");
+                return false;
+            }
+        }
+
+        if (balance != null && !balance.isEmpty()) {
+            if (!updateBalance(balance)) {
+                System.err.println("Init: Loi nap So du");
+                return false;
+            }
+        }
+
+        if (pictureData != null && pictureData.length > 0) {
+            System.out.println("Init: Dang nap anh...");
+            if (!updatePicture(pictureData)) {
+                System.err.println("Init: Loi nap Anh");
+                return false;
+            }
+        }
+
+        System.out.println("Init: Nap the thanh cong!");
+        return true;
+    }
 }

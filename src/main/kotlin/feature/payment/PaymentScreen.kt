@@ -130,7 +130,7 @@ fun ColumnScope.TopUpTab(
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Text(
-            text = "💳 Nạp tiền vào thẻ",
+            text = "Nạp tiền vào thẻ",
             fontSize = 16.sp,
             fontWeight = FontWeight.Bold,
             color = Color(0xFF4CAF50)
@@ -333,7 +333,7 @@ fun ColumnScope.TopUpTab(
         )
         
         ConfirmButton(
-            text = "💰 Xác nhận nạp tiền",
+            text = "Xác nhận nạp tiền",
             onClick = { paymentViewModel.showTopUpPinDialog() },
             modifier = Modifier.weight(1f),
             enabled = !state.isLoading && state.selectedCustomer != null && state.topUpAmount.isNotEmpty()
@@ -643,7 +643,7 @@ fun ColumnScope.ExtensionTab(
         PinVerificationDialog(
             title = "Xác thực PIN để thanh toán",
             onVerified = { pin ->
-                paymentViewModel.processExtension(onExtension)
+                paymentViewModel.processExtension(pin, onExtension)
             },
             onDismiss = { paymentViewModel.dismissExtensionPinDialog() }
         )

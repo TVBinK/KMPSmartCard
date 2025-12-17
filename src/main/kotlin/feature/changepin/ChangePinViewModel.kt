@@ -9,7 +9,7 @@ import smartcard.BusCardManager
  * Quản lý logic thay đổi PIN
  */
 class ChangePinViewModel(
-    private val onSuccess: () -> Unit
+    private val onSuccess: (newPin: String) -> Unit
 ) {
     
     private val viewModelScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
@@ -137,7 +137,8 @@ class ChangePinViewModel(
                     isCardBlocked = false
                 )
             }
-            onSuccess()
+            // Truyền PIN mới ra ngoài để có thể ghi lại dữ liệu lên thẻ
+            onSuccess(state.newPin)
         }.onFailure { error ->
             _state.update { 
                 it.copy(

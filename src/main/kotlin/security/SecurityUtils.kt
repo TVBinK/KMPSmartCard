@@ -1,8 +1,9 @@
 package security
 
 import java.security.*
+import java.math.BigInteger
 import java.security.spec.PKCS8EncodedKeySpec
-import java.security.spec.X509EncodedKeySpec
+import java.security.spec.RSAPublicKeySpec
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
@@ -108,5 +109,64 @@ object SecurityUtils {
      */
     fun bytesToBase64(bytes: ByteArray): String = 
         java.util.Base64.getEncoder().encodeToString(bytes)
+    
+    /**
+     * Tạo đối tượng PublicKey từ byte[] public key do THẺ trả về
+     *
+     * Định dạng bytes từ thẻ (xem BusCardApplet.getPublicKey):
+     *  - [0 .. modLen-1]            : modulus
+     *  - [modLen .. modLen+expLen-1]: exponent
+     *  - [len-4 .. len-1]           : 4 byte cuối: modLenHi, modLenLo, expLenHi, expLenLo
+     */
+    private fun generatePublicKeyFromCardBytes(publicKeyBytes: ByteArray): PublicKey {
+        return try {
+            if (publicKeyBytes.size < 4) {
+                throw IllegalArgumentException("Dữ liệu public key quá ngắn")
+            }
+
+            val totalLen = publicKeyBytes.size
+            val modLen = ((publicKeyBytes[totalLen - 4].toInt() and 0xFF) shl 8) or
+                         (publicKeyBytes[totalLen - 3].toInt() and 0xFF)
+            val expLen = ((publicKeyBytes[totalLen - 2].toInt() and 0xFF) shl 8) or
+                         (publicKeyBytes[totalLen - 1].toInt() and 0xFF)
+
+            if (modLen <= 0 || expLen <= 0 || modLen + expLen + 4 != totalLen) {
+                throw IllegalArgumentException("Định dạng public key từ thẻ không hợp lệ")
+            }
+
+            val modulusBytes = publicKeyBytes.copyOfRange(0, modLen)
+            val exponentBytes = publicKeyBytes.copyOfRange(modLen, modLen + expLen)
+
+            val modulus = BigInteger(1, modulusBytes)
+            val exponent = BigInteger(1, exponentBytes)
+
+            val keySpec = RSAPublicKeySpec(modulus, exponent)
+            val keyFactory = KeyFactory.getInstance(RSA_ALGORITHM)
+            keyFactory.generatePublic(keySpec)
+        } catch (e: Exception) {
+            throw SecurityException("Không thể tạo PublicKey từ bytes của thẻ: ${e.message}", e)
+        }
+    }
+    
+    /**
+     * Verify chữ ký RSA (SHA1withRSA) cho challenge string
+     *
+     * @param publicKeyBytes public key (raw bytes do thẻ trả về, được lưu HEX trong DB)
+     * @param signature chữ ký do thẻ trả về
+     * @param challenge chuỗi challenge (ví dụ 6 chữ số)
+     */
+    fun verifyRsaSignature(
+        publicKeyBytes: ByteArray,
+        signature: ByteArray,
+        challenge: String
+    ): Boolean = try {
+        val publicKey = generatePublicKeyFromCardBytes(publicKeyBytes)
+        val sig = Signature.getInstance("SHA1withRSA")
+        sig.initVerify(publicKey)
+        sig.update(challenge.toByteArray(UTF_8))
+        sig.verify(signature)
+    } catch (e: Exception) {
+        throw SecurityException("Lỗi verify chữ ký RSA: ${e.message}", e)
+    }
 }
 

@@ -9,6 +9,8 @@ import core.database.DatabaseManager
 import smartcard.BusCardManager
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
+import java.text.SimpleDateFormat
+import java.util.Date
 import java.io.File
 import javax.imageio.ImageIO
 import com.buscardmanagement.client.util.HelpMethod
@@ -145,11 +147,18 @@ class LoadCardInfoViewModel(
                     )
                 }
             } else {
+                // Thẻ rỗng → Sinh Card ID tự động theo quy tắc
+                val latestId = withContext(Dispatchers.IO) {
+                    DatabaseManager.getLatestCitizenId()
+                }
+                val newCardId = generateCardId(latestId)
+                
                 _state.update {
                     it.copy(
                         statusMessage = "✓ Thẻ rỗng, sẵn sàng nạp dữ liệu",
                         isCardEmpty = true,
-                        currentStep = LoadStep.INPUT_INFO
+                        currentStep = LoadStep.INPUT_INFO,
+                        cardId = newCardId
                     )
                 }
             }
@@ -253,15 +262,26 @@ class LoadCardInfoViewModel(
                 return
             }
 
-            // Chuyển đổi sang ByteArray bằng HelpMethod
-            val bytes = HelpMethod.convertImageToByteArray(image)
+            // Chuyển đổi + resize nếu cần để đảm bảo <= MAX_PHOTO_SIZE_BYTES
+            val processedBytes = HelpMethod.resizeImageToMaxSize(
+                image,
+                MAX_PHOTO_SIZE_BYTES,
+                400,   // maxWidth
+                400    // maxHeight
+            )
+                ?: run {
+                    _state.update {
+                        it.copy(statusMessage = "✗ Không thể xử lý ảnh")
+                    }
+                    return
+                }
 
-            println("Anh da chuyen doi: ${bytes.size} bytes (${image.width}x${image.height})")
+            println("Anh da xu ly: ${processedBytes.size} bytes (${image.width}x${image.height})")
 
             _state.update {
                 it.copy(
-                    photoBytes = bytes,
-                    statusMessage = "✓ Đã chọn ảnh (${bytes.size} bytes)"
+                    photoBytes = processedBytes,
+                    statusMessage = "✓ Đã xử lý ảnh (${processedBytes.size} bytes, giới hạn ${MAX_PHOTO_SIZE_BYTES} bytes)"
                 )
             }
         } catch (e: Exception) {
@@ -339,17 +359,27 @@ class LoadCardInfoViewModel(
      * Validate input
      */
     private fun validateInput(state: LoadCardInfoState): Boolean {
-        val cccd = state.cccd
-        val phone = state.phone
-        val dob = state.dob.text
+        val fullName = state.fullName.trim()
+        val cccd = state.cccd.trim()
+        val phone = state.phone.trim()
+        val dob = state.dob.text.trim()
+        val address = state.address.trim()
+        val balanceStr = state.balance.trim()
+        val pin = state.pin.trim()
 
-        // Validate CCCD: đúng 12 chữ số
+        // Card ID: được sinh tự động, chỉ cần khác rỗng
+        val isValidCardId = state.cardId.isNotBlank()
+
+        // Họ tên: không rỗng, tối thiểu 3 ký tự
+        val isValidFullName = fullName.length >= 3
+
+        // CCCD: đúng 12 chữ số
         val isValidCccd = cccd.length == 12 && cccd.all { it.isDigit() }
 
-        // Validate SĐT: đúng 10 chữ số
+        // SĐT: đúng 10 chữ số
         val isValidPhone = phone.length == 10 && phone.all { it.isDigit() }
 
-        // Validate DOB: định dạng dd/MM/yyyy và < ngày hiện tại
+        // DOB: định dạng dd/MM/yyyy và < ngày hiện tại
         var isValidDob = false
         try {
             if (dob.matches(Regex("\\d{2}/\\d{2}/\\d{4}"))) {
@@ -361,14 +391,47 @@ class LoadCardInfoViewModel(
             isValidDob = false
         }
 
-        return state.cardId.isNotBlank() &&
-                state.fullName.isNotBlank() &&
+        // Địa chỉ: không rỗng
+        val isValidAddress = address.isNotEmpty()
+
+        // Số dư: là số >= 0
+        val balanceValue = balanceStr.toDoubleOrNull()
+        val isValidBalance = balanceValue != null && balanceValue >= 0.0
+
+        // PIN: 4-6 ký tự số
+        val isValidPin = pin.length in 4..6 && pin.all { it.isDigit() }
+
+        return isValidCardId &&
+                isValidFullName &&
                 isValidCccd &&
                 isValidDob &&
                 isValidPhone &&
-                state.pin.length in 4..6
+                isValidAddress &&
+                isValidBalance &&
+                isValidPin
     }
+    
+    /**
+     * Sinh Card ID mới theo quy tắc:
+     *  - prefix = ngày hiện tại dạng ddMMyy
+     *  - suffix = 6 số cuối tăng dần từ latestId
+     */
+    private fun generateCardId(latestId: String?): String {
+        val dateFormat = SimpleDateFormat("ddMMyy")
+        val prefix = dateFormat.format(Date())
 
+        val nextSuffix = if (latestId.isNullOrBlank() || latestId.length < 6) {
+            1
+        } else {
+            val last6 = latestId.takeLast(6)
+            val current = last6.toIntOrNull() ?: 0
+            current + 1
+        }
+
+        val suffixStr = String.format("%06d", nextSuffix)
+        return prefix + suffixStr
+    }
+    
     /**
      * Ghi dữ liệu lên thẻ
      */
@@ -399,6 +462,22 @@ class LoadCardInfoViewModel(
         }
 
         if (writeSuccess) {
+            // Lấy public key RSA do thẻ sinh ra để lưu vào DB (dạng HEX)
+            val publicKeyHex = withContext(Dispatchers.IO) {
+                try {
+                    val pkResult = BusCardManager.getPublicKey()
+                    if (pkResult.isSuccess) {
+                        pkResult.getOrNull()
+                            ?.joinToString(separator = "") { "%02X".format(it) }
+                            ?: ""
+                    } else {
+                        ""
+                    }
+                } catch (e: Exception) {
+                    ""
+                }
+            }
+
             val newCustomer = Customer(
                 id = state.cardId,
                 cardId = state.cardId,
@@ -410,7 +489,8 @@ class LoadCardInfoViewModel(
                 cardType = state.cardType,
                 expiryDate = state.expiryDate,
                 balance = state.balance.toDoubleOrNull() ?: 0.0,
-                photoBytes = state.photoBytes
+                photoBytes = state.photoBytes,
+                publicKey = publicKeyHex
             )
 
             _state.update {
@@ -483,9 +563,55 @@ class LoadCardInfoViewModel(
         photoBytes: ByteArray? = null
     ): Boolean {
         return try {
+            // QUAN TRỌNG: Clear card trước khi nạp dữ liệu mới
+            // Đảm bảo thẻ ở trạng thái sạch trước khi tạo PIN và nạp dữ liệu
+            println("Dang xoa du lieu cu tren the (neu co)...")
+            val clearResult = BusCardManager.clearCard()
+            if (clearResult.isFailure) {
+                val errorMsg = clearResult.exceptionOrNull()?.message ?: "Unknown error"
+                println("Canh bao: Khong the xoa du lieu cu tren the: $errorMsg")
+                // Vẫn tiếp tục vì có thể thẻ đã rỗng, nhưng sẽ thử clear lại nếu cần
+            } else {
+                println("Da xoa du lieu cu tren the thanh cong")
+            }
+
+            // Đợi một chút để đảm bảo clear card hoàn tất
+            Thread.sleep(200)
+
+            // Kiểm tra lại xem thẻ đã được clear chưa
+            val checkResult = BusCardManager.checkCardCreated()
+            if (checkResult.isSuccess && checkResult.getOrNull() == true) {
+                println("Canh bao: The van con du lieu sau khi clear. Thu clear lai...")
+                val retryClear = BusCardManager.clearCard()
+                if (retryClear.isSuccess) {
+                    Thread.sleep(200)
+                }
+            }
+
             val formatter = DateTimeFormatter.ofPattern("dd/MM/yyyy")
             val expiryString = expiryDate.format(formatter)
 
+            // QUAN TRỌNG: Set PIN trước tiên để tạo AES key
+            // Sau đó mới có thể mã hóa và lưu các thông tin khác
+            // Lưu ý: Nếu vẫn gặp lỗi 6A88, có thể do applet yêu cầu thẻ phải được initialized trước
+            // Trong trường hợp đó, cần sửa applet để cho phép UPDATE_PIN khi chưa initialized
+            val pinResult = BusCardManager.updatePin("", pin) // Tạo PIN lần đầu, không cần PIN cũ
+            if (pinResult.isFailure) {
+                val errorMsg = pinResult.exceptionOrNull()?.message ?: "Unknown error"
+                println("Loi: Khong the thiet lap PIN: $errorMsg")
+                println("Giai phap: Can dam bao the da duoc clear hoan toan. " +
+                        "Neu van gap loi, co the can sua applet de cho phep UPDATE_PIN khi chua initialized.")
+                return false
+            }
+
+            // Verify PIN sau khi set để đảm bảo trạng thái validated được thiết lập
+            val verifyPinResult = BusCardManager.checkPin(pin)
+            if (verifyPinResult.isFailure) {
+                println("Canh bao: Khong the verify PIN sau khi set: ${verifyPinResult.exceptionOrNull()?.message}")
+                // Vẫn tiếp tục vì có thể applet tự động validate khi set PIN lần đầu
+            }
+
+            // Sau khi có PIN và đã verify -> Có AES Key -> Có thể mã hóa và lưu thông tin
             val infoResult = BusCardManager.updateCustomerInfo(
                 fullName = fullName,
                 customerType = "Khách hàng",
@@ -495,18 +621,25 @@ class LoadCardInfoViewModel(
                 cccd = cccd,
                 dob = dob,
                 address = address,
-                phone = phone
+                phone = phone,
+                pin = pin  // Sử dụng PIN vừa set để verify trước khi cập nhật
             )
-            if (infoResult.isFailure) return false
+            if (infoResult.isFailure) {
+                println("Loi: Khong the cap nhat thong tin khach hang: ${infoResult.exceptionOrNull()?.message}")
+                return false
+            }
 
             val cardIdResult = BusCardManager.updateCardId(cardId)
-            if (cardIdResult.isFailure) return false
+            if (cardIdResult.isFailure) {
+                println("Loi: Khong the cap nhat Card ID")
+                return false
+            }
 
-            val balanceResult = BusCardManager.updateBalance(balance)
-            if (balanceResult.isFailure) return false
-
-            val pinResult = BusCardManager.updatePin("", pin) // Tạo PIN lần đầu, không cần PIN cũ
-            if (pinResult.isFailure) return false
+            val balanceResult = BusCardManager.updateBalance(balance, pin) // Sử dụng PIN để verify
+            if (balanceResult.isFailure) {
+                println("Loi: Khong the cap nhat so du: ${balanceResult.exceptionOrNull()?.message}")
+                return false
+            }
 
             // Ghi ảnh vào thẻ nếu có
             if (photoBytes != null) {
