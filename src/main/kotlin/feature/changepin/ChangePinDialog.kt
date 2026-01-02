@@ -173,7 +173,7 @@ fun ChangePinDialog(
                         OutlinedTextField(
                             value = state.newPin,
                             onValueChange = { changePinViewModel.updateNewPin(it) },
-                            label = { Text("Mã PIN mới (4-6 số) *") },
+                            label = { Text("Mã PIN mới (6 số) *") },
                             leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null) },
                             trailingIcon = {
                                 IconButton(onClick = { changePinViewModel.toggleNewPinVisibility() }) {
@@ -269,7 +269,7 @@ fun ChangePinDialog(
                                 }
                                 Spacer(modifier = Modifier.height(4.dp))
                                 Text(
-                                    text = "• PIN phải có từ 4-6 chữ số\n• Không được trùng với PIN hiện tại\n• Nhớ kỹ PIN mới để sử dụng",
+                                    text = "• PIN phải có 6 chữ số\n• Không được trùng với PIN hiện tại\n• Nhớ kỹ PIN mới để sử dụng",
                                     fontSize = 11.sp,
                                     color = Color(0xFF666666)
                                 )

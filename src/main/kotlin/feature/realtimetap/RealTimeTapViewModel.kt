@@ -182,11 +182,11 @@ class RealTimeTapViewModel(
                         amount = 0.0,
                         balanceBefore = customer.balance,
                         balanceAfter = customer.balance,
-                        description = "Quẹt thẻ tháng - Miễn phí (còn hạn đến ${customer.expiryDate})"
+                        description = "Quẹt thẻ tháng (còn hạn đến ${customer.expiryDate})"
                     )
                     _state.update { 
                         it.copy(
-                            statusMessage = "✓ Quẹt thẻ tháng thành công - Miễn phí"
+                            statusMessage = "Quẹt thẻ tháng thành công"
                         )
                     }
                 }

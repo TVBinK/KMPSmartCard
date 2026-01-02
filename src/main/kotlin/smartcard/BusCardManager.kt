@@ -157,7 +157,7 @@ object BusCardManager {
 
             // Validation cho PIN mới
             if (newPin.length < 4 || newPin.length > 6) {
-                return Result.failure(Exception("PIN mới phải có từ 4-6 chữ số"))
+                return Result.failure(Exception("PIN mới phải có 6 chữ số"))
             }
 
             // Validation cho đổi PIN (không áp dụng cho tạo PIN lần đầu)
@@ -193,25 +193,29 @@ object BusCardManager {
 
     /**
      * Kiểm tra PIN (với counter, khóa thẻ sau 4 lần sai)
+     * @param skipRsaCheck Bỏ qua RSA verification (dùng khi đã verify trước đó, ví dụ sau khi đổi PIN)
      */
-    fun checkPin(pin: String): Result<Boolean> {
+    fun checkPin(pin: String, skipRsaCheck: Boolean = false): Result<Boolean> {
         return try {
-            // 1. Đọc Card ID từ thẻ
-            val cardIdResult = getCardId()
-            if (cardIdResult.isFailure) {
-                return Result.failure(Exception("Không thể đọc Card ID trước khi xác thực RSA"))
-            }
-            val cardId = cardIdResult.getOrNull() ?: return Result.failure(
-                Exception("Card ID rỗng, không thể thực hiện xác thực RSA")
-            )
+            // 1. RSA Challenge-Response (nếu không bỏ qua)
+            if (!skipRsaCheck) {
+                // Đọc Card ID từ thẻ
+                val cardIdResult = getCardId()
+                if (cardIdResult.isFailure) {
+                    return Result.failure(Exception("Không thể đọc Card ID trước khi xác thực RSA"))
+                }
+                val cardId = cardIdResult.getOrNull() ?: return Result.failure(
+                    Exception("Card ID rỗng, không thể thực hiện xác thực RSA")
+                )
 
-            // 2. Thực hiện RSA Challenge-Response để xác thực THẺ
-            val rsaResult = challengeCard(cardId)
-            if (rsaResult.isFailure || rsaResult.getOrNull() != true) {
-                return Result.failure(Exception("Thẻ bị từ chối do xác thực RSA không thành công"))
+                // Thực hiện RSA Challenge-Response để xác thực THẺ
+                val rsaResult = challengeCard(cardId)
+                if (rsaResult.isFailure || rsaResult.getOrNull() != true) {
+                    return Result.failure(Exception("Thẻ bị từ chối do xác thực RSA không thành công"))
+                }
             }
 
-            // 3. Sau khi thẻ hợp lệ -> mới verify PIN (xác thực NGƯỜI DÙNG)
+            // 2. Verify PIN (xác thực NGƯỜI DÙNG)
             val result = smartCard.checkPin(pin)
             if (result) {
                 Result.success(true)

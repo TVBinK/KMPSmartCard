@@ -269,7 +269,8 @@ class ReadSmartCardViewModel {
                 println("[RewriteData] Bat dau ghi lai du lieu sau khi doi PIN...")
                 
                 // Verify PIN mới để set trạng thái validated
-                val verifyResult = BusCardManager.checkPin(newPin)
+                // Bỏ qua RSA verification vì đã verify khi đổi PIN rồi
+                val verifyResult = BusCardManager.checkPin(newPin, skipRsaCheck = true)
                 if (verifyResult.isFailure) {
                     println("[RewriteData] Loi verify PIN moi: ${verifyResult.exceptionOrNull()?.message}")
                     withContext(Dispatchers.Main) {

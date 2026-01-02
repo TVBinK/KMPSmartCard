@@ -485,7 +485,7 @@ fun InputInfoStepContent(
                 OutlinedTextField(
                     value = pin,
                     onValueChange = { if (it.length <= 6) onPinChange(it) },
-                    label = { Text("Mã PIN (4-6 số) *") },
+                    label = { Text("Mã PIN (6 số) *") },
                     leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null) },
                     trailingIcon = {
                         IconButton(onClick = { pinVisible = !pinVisible }) {

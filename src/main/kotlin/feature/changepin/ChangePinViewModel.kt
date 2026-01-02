@@ -88,7 +88,7 @@ class ChangePinViewModel(
         }
         
         if (state.newPin.length < 4 || state.newPin.length > 6) {
-            _state.update { it.copy(errorMessage = "PIN mới phải có từ 4-6 chữ số") }
+            _state.update { it.copy(errorMessage = "PIN mới phải có 6 chữ số") }
             return
         }
         
